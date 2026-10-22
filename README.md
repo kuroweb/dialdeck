@@ -16,7 +16,7 @@
 
 ## セットアップ
 
-リポジトリの取得（submodule を含む）から、開発環境の構築、ビルド、書き込みまでは [docs/setup.md](docs/setup.md) を参照する。
+リポジトリの取得（submodule を含む）から、開発環境の構築、ファームのビルドと書き込み、Mac アプリのインストールまでは [docs/setup.md](docs/setup.md) を参照する。
 
 ## ハードウェア
 

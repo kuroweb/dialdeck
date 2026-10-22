@@ -9,3 +9,7 @@ sdkconfig.old
 
 # macOS
 .DS_Store
+
+# Mac app (SwiftPM build output and the bundled .app)
+mac/.build/
+mac/build/

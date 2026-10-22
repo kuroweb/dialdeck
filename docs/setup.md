@@ -1,6 +1,6 @@
 # 開発環境のセットアップ（macOS）
 
-リポジトリの取得から、ファームウェアの書き込みまで。
+リポジトリの取得から、ファームウェアの書き込みと Mac アプリのインストールまで。
 
 ESP-IDF は公式インストーラー EIM（ESP-IDF Installation Manager）で入れる。EIM 自体は Homebrew の tap から入れる。ESP-IDF 本体とツールチェーンは、EIM が `~/.espressif` 配下に置く。
 
@@ -86,3 +86,24 @@ idf.py -p /dev/cu.usbmodem* flash monitor
 ```
 
 `monitor` を抜けるには `Ctrl+]`。
+
+## 9. Mac アプリを入れる
+
+ボタン画面の割り当ては Mac アプリで変える。Swift Package Manager でビルドするので、`swift` コマンドが使えればよい（Xcode のプロジェクトは使わない）。
+
+```
+cd mac
+./scripts/build-app.sh --install
+```
+
+`mac/build/DialDeck.app` を作り、`/Applications/DialDeck.app` にコピーする。起動中の DialDeck は終了してから置き換える。`--install` を付けなければ `mac/build/` に作るだけ。
+
+アプリは ad hoc 署名なので、ビルドした Mac でだけ開ける。
+
+### 初めて起動したとき
+
+1. `/Applications/DialDeck.app` を開く
+2. Bluetooth の利用を求めるダイアログで許可する。ビルドし直すと署名が変わるので、もう一度聞かれることがある
+3. DialDeck を Mac とペアリングしておく（システム設定 → Bluetooth）。アプリはペアリング済みで接続中の DialDeck を使い、自分では探さない
+
+ウィンドウに `Not connected` と出たままなら、ファームの GATT サービスが変わって Mac が古い構成を覚えている可能性がある。システム設定 → Bluetooth で DialDeck を削除し、ペアリングし直す。
