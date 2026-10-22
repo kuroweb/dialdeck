@@ -28,6 +28,12 @@ CST816 のタッチドライバは、INT ピン（GPIO7）のために GPIO の 
 
 初期化時に `The 3Ah command has been used and will be overwritten by external initialization sequence` という警告が出る。シーケンスの中で色形式（3Ah）を RGB565 に設定しているためで、問題ない。
 
+## BLE HID
+
+HID のレポート仕様（`firmware/main/ble_hid.c` の report map）を変えると、ペアリング済みの Mac は前の構成を覚えたままになり、追加したレポートが届かない。Mac の Bluetooth 設定で DialDeck を削除し、ペアリングし直す。
+
+report map を大きくしたとき、HID の初期化を走らせるメインタスクのスタックが足りず、起動直後に再起動を繰り返した。`CONFIG_ESP_MAIN_TASK_STACK_SIZE` を 8192 にしている。
+
 ## 書き込み後の起動
 
 ダウンロードモードから書き込んだあと、USB 経由のリセットでは `boot:0x3 (DOWNLOAD(USB/UART0))` のまま止まることがある。USB ケーブルを抜き差しして電源を入れ直すと、通常どおり起動する。
