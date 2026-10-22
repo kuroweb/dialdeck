@@ -18,6 +18,8 @@ static const char *TAG = "ble_hid";
 
 #define DEVICE_NAME        "DialDeck"
 #define REPORT_ID_MOUSE    1
+#define REPORT_ID_KEYBOARD 2
+#define REPORT_ID_CONSUMER 3
 
 static const uint8_t s_report_map[] = {
     0x05, 0x01,        // Usage Page (Generic Desktop)
@@ -48,6 +50,44 @@ static const uint8_t s_report_map[] = {
     0x81, 0x06,        //     Input (Data,Var,Rel)
     0xC0,              //   End Collection
     0xC0,              // End Collection
+
+    0x05, 0x01,        // Usage Page (Generic Desktop)
+    0x09, 0x06,        // Usage (Keyboard)
+    0xA1, 0x01,        // Collection (Application)
+    0x85, REPORT_ID_KEYBOARD, // Report ID
+    0x05, 0x07,        //   Usage Page (Keyboard)
+    0x19, 0xE0,        //   Usage Minimum (Left Control)
+    0x29, 0xE7,        //   Usage Maximum (Right GUI)
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x25, 0x01,        //   Logical Maximum (1)
+    0x75, 0x01,        //   Report Size (1)
+    0x95, 0x08,        //   Report Count (8)
+    0x81, 0x02,        //   Input (Data,Var,Abs): modifiers
+    0x95, 0x01,        //   Report Count (1)
+    0x75, 0x08,        //   Report Size (8)
+    0x81, 0x01,        //   Input (Const): reserved
+    0x95, 0x06,        //   Report Count (6)
+    0x75, 0x08,        //   Report Size (8)
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x25, 0x65,        //   Logical Maximum (101)
+    0x05, 0x07,        //   Usage Page (Keyboard)
+    0x19, 0x00,        //   Usage Minimum (0)
+    0x29, 0x65,        //   Usage Maximum (101)
+    0x81, 0x00,        //   Input (Data,Array): keys
+    0xC0,              // End Collection
+
+    0x05, 0x0C,        // Usage Page (Consumer)
+    0x09, 0x01,        // Usage (Consumer Control)
+    0xA1, 0x01,        // Collection (Application)
+    0x85, REPORT_ID_CONSUMER, // Report ID
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x26, 0xFF, 0x03,  //   Logical Maximum (1023)
+    0x19, 0x00,        //   Usage Minimum (0)
+    0x2A, 0xFF, 0x03,  //   Usage Maximum (1023)
+    0x75, 0x10,        //   Report Size (16)
+    0x95, 0x01,        //   Report Count (1)
+    0x81, 0x00,        //   Input (Data,Array)
+    0xC0,              // End Collection
 };
 
 static esp_hid_raw_report_map_t s_report_maps[] = {
@@ -74,7 +114,7 @@ static void advertise(void)
 {
     struct ble_hs_adv_fields fields = {
         .flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP,
-        .appearance = ESP_HID_APPEARANCE_MOUSE,
+        .appearance = ESP_HID_APPEARANCE_GENERIC,
         .appearance_is_present = 1,
         .name = (uint8_t *)DEVICE_NAME,
         .name_len = strlen(DEVICE_NAME),
@@ -176,7 +216,7 @@ void ble_hid_init(void)
 
     ESP_ERROR_CHECK(esp_hidd_dev_init(&s_hid_config, ESP_HID_TRANSPORT_BLE, hidd_event, &s_hid_dev));
     ble_svc_gap_device_name_set(DEVICE_NAME);
-    ble_svc_gap_device_appearance_set(ESP_HID_APPEARANCE_MOUSE);
+    ble_svc_gap_device_appearance_set(ESP_HID_APPEARANCE_GENERIC);
 
     ble_store_config_init();
     nimble_port_freertos_init(host_task);
@@ -208,4 +248,26 @@ void ble_hid_mouse(int dx, int dy, int wheel, uint8_t buttons)
         };
         esp_hidd_dev_input_set(s_hid_dev, 0, REPORT_ID_MOUSE, report, sizeof(report));
     } while (dx != 0 || dy != 0 || wheel != 0);
+}
+
+void ble_hid_key(uint8_t modifiers, uint8_t key)
+{
+    if (ble_hid_state() != BLE_HID_STATE_CONNECTED) {
+        return;
+    }
+    uint8_t report[8] = { modifiers, 0, key };
+    esp_hidd_dev_input_set(s_hid_dev, 0, REPORT_ID_KEYBOARD, report, sizeof(report));
+    memset(report, 0, sizeof(report));
+    esp_hidd_dev_input_set(s_hid_dev, 0, REPORT_ID_KEYBOARD, report, sizeof(report));
+}
+
+void ble_hid_consumer(uint16_t usage)
+{
+    if (ble_hid_state() != BLE_HID_STATE_CONNECTED) {
+        return;
+    }
+    uint8_t report[2] = { usage & 0xFF, usage >> 8 };
+    esp_hidd_dev_input_set(s_hid_dev, 0, REPORT_ID_CONSUMER, report, sizeof(report));
+    memset(report, 0, sizeof(report));
+    esp_hidd_dev_input_set(s_hid_dev, 0, REPORT_ID_CONSUMER, report, sizeof(report));
 }
