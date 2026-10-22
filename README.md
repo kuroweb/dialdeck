@@ -21,15 +21,6 @@ BLE macro pad / dial mouse for Guition JC3636K718C (ESP32-S3), with herdr integr
 
 ピン配置と既知の注意点は `vendor/esphome-guition-jc3636k718c-va`（参照専用の submodule）と、そのスキル `.claude/skills/guition-jc3636k718c` を参照する。
 
-## 純正ファームウェア
+## 純正ファームウェアのバックアップ
 
-`backup/` に純正ファームのフラッシュ全体を置く（git 管理外）。
-
-- `jc3636k718c_stock_44bd8d6f1fb8.bin`（16MB）
-- SHA-256: `73b4181484af66aa56d5650e18d4537dbb69a81ac6039b38d524f26048c3c790`
-
-ダウンロードモード（USB-C ポート左の BOOT を押しながら電源投入）で書き戻す:
-
-```
-esptool -p /dev/cu.usbmodem* write-flash 0 backup/jc3636k718c_stock_44bd8d6f1fb8.bin
-```
+DialDeck を書き込むと純正ファームは消える。初めて書き込む前に、[docs/stock-firmware-backup.md](docs/stock-firmware-backup.md) の手順でフラッシュ全体を `backup/` に吸い出しておく。書き戻し手順も同じ文書にある。
