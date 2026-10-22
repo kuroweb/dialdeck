@@ -3,6 +3,7 @@
 #include <stdatomic.h>
 #include <string.h>
 
+#include "config_service.h"
 #include "esp_bt.h"
 #include "esp_check.h"
 #include "esp_hidd.h"
@@ -217,6 +218,7 @@ void ble_hid_init(void)
     ESP_ERROR_CHECK(esp_hidd_dev_init(&s_hid_config, ESP_HID_TRANSPORT_BLE, hidd_event, &s_hid_dev));
     ble_svc_gap_device_name_set(DEVICE_NAME);
     ble_svc_gap_device_appearance_set(ESP_HID_APPEARANCE_GENERIC);
+    config_service_register();
 
     ble_store_config_init();
     nimble_port_freertos_init(host_task);

@@ -1,4 +1,5 @@
 #include "ble_hid.h"
+#include "deck_config.h"
 #include "display.h"
 #include "esp_lvgl_port.h"
 #include "freertos/FreeRTOS.h"
@@ -66,6 +67,7 @@ void app_main(void)
 {
     nvs_init();
     settings_load();
+    deck_config_load();
 
     display_init();
     display_set_brightness(settings()->brightness);
