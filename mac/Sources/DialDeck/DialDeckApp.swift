@@ -7,7 +7,7 @@ struct DialDeckApp: App {
 
     var body: some Scene {
         Window("DialDeck", id: "main") {
-            DeckEditorView(link: link)
+            RootView(link: link)
         }
         .windowResizability(.contentSize)
     }

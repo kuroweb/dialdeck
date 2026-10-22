@@ -18,15 +18,19 @@ public final class DeviceLink: NSObject, ObservableObject {
     public static let serviceUUID = CBUUID(string: "98D3462C-2EB8-4022-BA87-4F253E72A24B")
     static let infoUUID = CBUUID(string: "98D3462D-2EB8-4022-BA87-4F253E72A24B")
     static let deckUUID = CBUUID(string: "98D3462E-2EB8-4022-BA87-4F253E72A24B")
+    static let settingsUUID = CBUUID(string: "98D3462F-2EB8-4022-BA87-4F253E72A24B")
     static let hidServiceUUID = CBUUID(string: "1812")
-    static let supportedProtocol: UInt8 = 1
+    static let supportedProtocol: UInt8 = 2
 
     @Published public private(set) var state: State = .searching
     @Published public private(set) var slots: [DeckSlot] = []
+    @Published public private(set) var settings: DeviceSettings?
 
     private var central: CBCentralManager!
     private var peripheral: CBPeripheral?
     private var deckCharacteristic: CBCharacteristic?
+    private var settingsCharacteristic: CBCharacteristic?
+    private var pendingSettings: DeviceSettings?
     private var retryTimer: Timer?
     private var pendingWrites: [(Int, DeckSlot)] = []
 
@@ -35,10 +39,18 @@ public final class DeviceLink: NSObject, ObservableObject {
         central = CBCentralManager(delegate: self, queue: .main)
     }
 
-    /// Read every assignment again.
+    /// Read every assignment and the settings again.
     public func reload() {
-        guard let peripheral, let deckCharacteristic else { return }
+        guard let peripheral, let deckCharacteristic, let settingsCharacteristic else { return }
         peripheral.readValue(for: deckCharacteristic)
+        peripheral.readValue(for: settingsCharacteristic)
+    }
+
+    /// Replace the settings. The device applies and saves them right away.
+    public func write(_ newSettings: DeviceSettings) {
+        guard let peripheral, let settingsCharacteristic else { return }
+        pendingSettings = newSettings
+        peripheral.writeValue(newSettings.wire, for: settingsCharacteristic, type: .withResponse)
     }
 
     /// Write one assignment. The device saves it and redraws the button.
@@ -75,7 +87,9 @@ public final class DeviceLink: NSObject, ObservableObject {
     private func reset(_ newState: State) {
         peripheral = nil
         deckCharacteristic = nil
+        settingsCharacteristic = nil
         pendingWrites.removeAll()
+        pendingSettings = nil
         state = newState
     }
 }
@@ -119,7 +133,7 @@ extension DeviceLink: CBPeripheralDelegate {
                 reset(.failed("The device has no config service. Update its firmware."))
                 return
             }
-            peripheral.discoverCharacteristics([Self.infoUUID, Self.deckUUID], for: service)
+            peripheral.discoverCharacteristics([Self.infoUUID, Self.deckUUID, Self.settingsUUID], for: service)
         }
     }
 
@@ -127,11 +141,13 @@ extension DeviceLink: CBPeripheralDelegate {
         MainActor.assumeIsolated {
             let characteristics = service.characteristics ?? []
             guard let info = characteristics.first(where: { $0.uuid == Self.infoUUID }),
-                  let deck = characteristics.first(where: { $0.uuid == Self.deckUUID }) else {
-                reset(.failed("The config service is incomplete."))
+                  let deck = characteristics.first(where: { $0.uuid == Self.deckUUID }),
+                  let settings = characteristics.first(where: { $0.uuid == Self.settingsUUID }) else {
+                reset(.failed("The config service is incomplete. Update the firmware."))
                 return
             }
             deckCharacteristic = deck
+            settingsCharacteristic = settings
             peripheral.readValue(for: info)
         }
     }
@@ -155,6 +171,8 @@ extension DeviceLink: CBPeripheralDelegate {
                     DeckSlot(wire: value.subdata(in: $0..<$0 + DeckSlot.wireSize))
                 }
                 state = .ready
+            case Self.settingsUUID:
+                settings = DeviceSettings(wire: value)
             default:
                 break
             }
@@ -163,6 +181,15 @@ extension DeviceLink: CBPeripheralDelegate {
 
     public nonisolated func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         MainActor.assumeIsolated {
+            if characteristic.uuid == Self.settingsUUID {
+                if let error {
+                    state = .failed(error.localizedDescription)
+                } else if let pendingSettings {
+                    settings = pendingSettings
+                }
+                pendingSettings = nil
+                return
+            }
             guard !pendingWrites.isEmpty else { return }
             let (index, slot) = pendingWrites.removeFirst()
             if let error {

@@ -12,45 +12,17 @@ struct DeckEditorView: View {
     @State private var selection = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("Deck buttons").font(.title2.bold())
-                Spacer()
-                StatusBadge(state: link.state)
-                Button("Reload") { link.reload() }
-                    .disabled(link.state != .ready)
+        HStack(alignment: .top, spacing: 24) {
+            DeckPreview(slots: link.slots, selection: $selection)
+            SlotEditor(name: slotName(selection), stored: link.slots[selection]) {
+                link.write($0, at: selection)
             }
-
-            if link.state == .ready, !link.slots.isEmpty {
-                HStack(alignment: .top, spacing: 24) {
-                    DeckPreview(slots: link.slots, selection: $selection)
-                    SlotEditor(name: slotName(selection), stored: link.slots[selection]) {
-                        link.write($0, at: selection)
-                    }
-                    .id(selection)
-                }
-            } else {
-                Text(hint(for: link.state))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 320)
-            }
+            .id(selection)
         }
-        .padding(24)
-        .frame(width: 720)
     }
 
     private func slotName(_ index: Int) -> String {
         index < slotNames.count ? slotNames[index] : "Slot \(index)"
-    }
-
-    private func hint(for state: DeviceLink.State) -> String {
-        switch state {
-        case .bluetoothOff: "Bluetooth is off or not allowed for DialDeck."
-        case .searching: "DialDeck is not connected. Pair it in System Settings → Bluetooth."
-        case .connecting: "Connecting…"
-        case .ready: ""
-        case .failed(let message): message
-        }
     }
 }
 
@@ -104,23 +76,6 @@ private struct DeckPreview: View {
 func displayLabel(_ label: String) -> String {
     let symbols: [UInt32: String] = [0xF04B: "▶", 0xF04C: "⏸", 0xF028: "🔊", 0xF027: "🔉", 0xF026: "🔈"]
     return label.unicodeScalars.map { symbols[$0.value] ?? String($0) }.joined()
-}
-
-private struct StatusBadge: View {
-    let state: DeviceLink.State
-
-    var body: some View {
-        let (text, color): (String, Color) = switch state {
-        case .ready: ("Connected", .green)
-        case .connecting: ("Connecting", .orange)
-        case .searching: ("Not connected", .secondary)
-        case .bluetoothOff: ("Bluetooth off", .red)
-        case .failed: ("Error", .red)
-        }
-        Label(text, systemImage: "circle.fill")
-            .font(.callout)
-            .foregroundStyle(color)
-    }
 }
 
 private enum ActionKind: String, CaseIterable, Identifiable {
