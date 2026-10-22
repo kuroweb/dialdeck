@@ -3,11 +3,13 @@
 #include "agents.h"
 #include "lvgl.h"
 
-// herdr agents: a list screen, and a detail screen opened by tapping an agent. The detail shows
-// what a blocked agent is asking and sends Focus, Enter, Esc, and up/down from the knob.
+// herdr agents: a dial with one circle per agent and the selected agent in the center, and a
+// detail screen opened by tapping the center. The detail shows what a blocked agent is asking and
+// sends Focus, Enter, Esc, and up/down from the knob.
 void agents_screen_create(lv_obj_t *list_scr, lv_obj_t *detail_scr);
 
-// Knob on the list scrolls it; on the detail of a blocked agent it moves through the choices.
+// Knob on the dial moves the selection around the ring; on the detail of a blocked agent it moves
+// through the choices.
 void agents_screen_list_knob(int detents);
 void agents_screen_detail_knob(int detents);
 

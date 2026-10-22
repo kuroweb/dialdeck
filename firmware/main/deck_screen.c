@@ -1,16 +1,13 @@
 #include "deck_screen.h"
 
-#include <math.h>
-
 #include "ble_hid.h"
 #include "deck_config.h"
 #include "esp_lvgl_port.h"
+#include "ring.h"
 #include "theme.h"
 
-#define RING_COUNT    (DECK_SLOT_COUNT - 1)
-#define RING_RADIUS   112
-#define RING_BUTTON   64
-#define CENTER_BUTTON 92
+_Static_assert(DECK_SLOT_COUNT - 1 == RING_SLOTS, "deck slots 1-8 fill the ring");
+
 
 static lv_obj_t *s_labels[DECK_SLOT_COUNT];
 
@@ -51,15 +48,10 @@ static void on_config_change(int slot)
 
 void deck_screen_create(lv_obj_t *scr)
 {
-    // Offset by half a step so no button sits right under the pull-down edge at the top.
-    const float step = 2 * (float)M_PI / RING_COUNT;
-    for (int i = 0; i < RING_COUNT; i++) {
-        const float a = step * (i + 0.5f);
-        lv_obj_t *btn = button_create(scr, i + 1, RING_BUTTON, theme_button());
-        lv_obj_align(btn, LV_ALIGN_CENTER, (int)lroundf(RING_RADIUS * sinf(a)), (int)lroundf(-RING_RADIUS * cosf(a)));
+    for (int i = 0; i < RING_SLOTS; i++) {
+        ring_place(button_create(scr, i + 1, RING_ITEM, theme_button()), i);
     }
-    lv_obj_t *center = button_create(scr, 0, CENTER_BUTTON, theme_accent());
-    lv_obj_center(center);
+    ring_place_center(button_create(scr, 0, RING_CENTER, theme_accent()));
 
     deck_config_on_change(on_config_change);
 }

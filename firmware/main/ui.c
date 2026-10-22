@@ -272,11 +272,9 @@ void ui_create(void)
     for (int i = 0; i < UI_SCREEN_COUNT; i++) {
         s_screens[i] = screen_create();
         if (i != UI_SCREEN_MENU) {
-            add_handle(s_screens[i], LV_ALIGN_TOP_MID, 12);
-            status_bar_create(i, 24);
-        } else {
-            status_bar_create(i, 20);
+            add_handle(s_screens[i], LV_ALIGN_TOP_MID, 6);
         }
+        status_bar_create(i, 14);
     }
     touchpad_screen_create(s_screens[UI_SCREEN_TOUCHPAD]);
     deck_screen_create(s_screens[UI_SCREEN_DECK]);
