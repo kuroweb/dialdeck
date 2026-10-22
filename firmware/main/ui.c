@@ -1,7 +1,9 @@
 #include "ui.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 
+#include "battery.h"
 #include "ble_hid.h"
 #include "board.h"
 #include "deck_screen.h"
@@ -20,8 +22,12 @@
 static lv_obj_t *s_screens[UI_SCREEN_COUNT];
 static ui_screen_t s_active;
 static ui_screen_t s_before_menu;   // where pushing the menu up returns to
-static lv_obj_t *s_ble_pill;
-static lv_obj_t *s_ble_label;
+// Phone-style status bar at the top of every screen: Bluetooth on the left, battery on the right.
+typedef struct {
+    lv_obj_t *ble;
+    lv_obj_t *battery;
+} status_bar_t;
+static status_bar_t s_status[UI_SCREEN_COUNT];
 static lv_obj_t *s_menu_items[UI_SCREEN_COUNT];
 
 static lv_point_t s_nav_start;
@@ -114,16 +120,52 @@ static void add_handle(lv_obj_t *scr, lv_align_t align, int y)
     lv_obj_align(bar, align, 0, y);
 }
 
+static void battery_text(char *buf, size_t len)
+{
+    const int percent = battery_percent();
+    if (battery_charging()) {
+        snprintf(buf, len, LV_SYMBOL_CHARGE);
+    } else if (percent < 0) {
+        snprintf(buf, len, LV_SYMBOL_BATTERY_EMPTY);
+    } else {
+        const char *icon = percent > 80 ? LV_SYMBOL_BATTERY_FULL
+                           : percent > 55 ? LV_SYMBOL_BATTERY_3
+                           : percent > 30 ? LV_SYMBOL_BATTERY_2
+                           : percent > 10 ? LV_SYMBOL_BATTERY_1
+                           : LV_SYMBOL_BATTERY_EMPTY;
+        snprintf(buf, len, "%d%% %s", percent, icon);
+    }
+}
+
 static void refresh_status(lv_timer_t *t)
 {
-    static const char *const names[] = {
-        [BLE_HID_STATE_STARTING] = LV_SYMBOL_BLUETOOTH "  Starting",
-        [BLE_HID_STATE_ADVERTISING] = LV_SYMBOL_BLUETOOTH "  Waiting",
-        [BLE_HID_STATE_CONNECTED] = LV_SYMBOL_BLUETOOTH "  Connected",
-    };
     const ble_hid_state_t state = ble_hid_state();
-    lv_label_set_text(s_ble_label, names[state]);
-    lv_obj_set_style_bg_color(s_ble_pill, state == BLE_HID_STATE_CONNECTED ? theme_accent() : theme_button(), 0);
+    const lv_color_t ble_color = state == BLE_HID_STATE_CONNECTED ? lv_palette_main(LV_PALETTE_TEAL)
+                                 : state == BLE_HID_STATE_ADVERTISING ? theme_text_muted()
+                                 : theme_button_dim();
+    char battery[16];
+    battery_text(battery, sizeof(battery));
+
+    for (int i = 0; i < UI_SCREEN_COUNT; i++) {
+        lv_obj_set_style_text_color(s_status[i].ble, ble_color, 0);
+        lv_label_set_text(s_status[i].battery, battery);
+    }
+}
+
+static void status_bar_create(ui_screen_t screen, int y)
+{
+    lv_obj_t *bar = lv_obj_create(s_screens[screen]);
+    lv_obj_remove_style_all(bar);
+    lv_obj_set_size(bar, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(bar, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(bar, 14, 0);
+    lv_obj_set_clickable(bar, false);
+    lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, y);
+
+    s_status[screen].ble = lv_label_create(bar);
+    lv_label_set_text(s_status[screen].ble, LV_SYMBOL_BLUETOOTH);
+    s_status[screen].battery = lv_label_create(bar);
+    lv_obj_set_style_text_color(s_status[screen].battery, theme_text_muted(), 0);
 }
 
 static void touchpad_screen_create(lv_obj_t *scr)
@@ -144,23 +186,7 @@ static void touchpad_screen_create(lv_obj_t *scr)
     lv_label_set_text(title, "Touchpad");
     lv_obj_set_style_text_color(title, theme_text_muted(), 0);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
-    lv_obj_align(title, LV_ALIGN_CENTER, 0, -20);
-
-    s_ble_pill = lv_obj_create(scr);
-    lv_obj_remove_style_all(s_ble_pill);
-    lv_obj_set_size(s_ble_pill, LV_SIZE_CONTENT, 32);
-    lv_obj_set_style_radius(s_ble_pill, 16, 0);
-    lv_obj_set_style_bg_opa(s_ble_pill, LV_OPA_COVER, 0);
-    lv_obj_set_style_pad_hor(s_ble_pill, 16, 0);
-    lv_obj_set_clickable(s_ble_pill, false);
-    lv_obj_align(s_ble_pill, LV_ALIGN_CENTER, 0, 22);
-
-    s_ble_label = lv_label_create(s_ble_pill);
-    lv_obj_set_style_text_color(s_ble_label, lv_color_white(), 0);
-    lv_obj_center(s_ble_label);
-
-    lv_timer_create(refresh_status, 200, NULL);
-    refresh_status(NULL);
+    lv_obj_center(title);
 }
 
 static void on_menu_item(lv_event_t *e)
@@ -211,13 +237,19 @@ void ui_create(void)
     for (int i = 0; i < UI_SCREEN_COUNT; i++) {
         s_screens[i] = screen_create();
         if (i != UI_SCREEN_MENU) {
-            add_handle(s_screens[i], LV_ALIGN_TOP_MID, 14);
+            add_handle(s_screens[i], LV_ALIGN_TOP_MID, 12);
+            status_bar_create(i, 24);
+        } else {
+            status_bar_create(i, 20);
         }
     }
     touchpad_screen_create(s_screens[UI_SCREEN_TOUCHPAD]);
     deck_screen_create(s_screens[UI_SCREEN_DECK]);
     settings_screen_create(s_screens[UI_SCREEN_SETTINGS]);
     menu_screen_create(s_screens[UI_SCREEN_MENU]);
+
+    lv_timer_create(refresh_status, 200, NULL);
+    refresh_status(NULL);
     show(UI_SCREEN_TOUCHPAD, LV_SCREEN_LOAD_ANIM_NONE);
 }
 

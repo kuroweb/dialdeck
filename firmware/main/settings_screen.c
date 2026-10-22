@@ -108,7 +108,7 @@ void settings_screen_create(lv_obj_t *scr)
     lv_label_set_text(title, "Settings");
     lv_obj_set_style_text_color(title, lv_color_white(), 0);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 52);
 
     lv_obj_t *list = lv_obj_create(scr);
     lv_obj_remove_style_all(list);
