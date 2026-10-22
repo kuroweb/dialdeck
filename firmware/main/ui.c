@@ -7,6 +7,7 @@
 #include "ble_hid.h"
 #include "board.h"
 #include "deck_screen.h"
+#include "hosts_screen.h"
 #include "settings_screen.h"
 #include "theme.h"
 #include "touchpad.h"
@@ -141,14 +142,21 @@ static void refresh_status(lv_timer_t *t)
 {
     const ble_hid_state_t state = ble_hid_state();
     const lv_color_t ble_color = state == BLE_HID_STATE_CONNECTED ? lv_palette_main(LV_PALETTE_TEAL)
+                                 : state == BLE_HID_STATE_PAIRING ? lv_palette_main(LV_PALETTE_AMBER)
                                  : state == BLE_HID_STATE_ADVERTISING ? theme_text_muted()
                                  : theme_button_dim();
+    char ble[16];
+    snprintf(ble, sizeof(ble), LV_SYMBOL_BLUETOOTH "%d", ble_hid_host() + 1);
     char battery[16];
     battery_text(battery, sizeof(battery));
 
     for (int i = 0; i < UI_SCREEN_COUNT; i++) {
         lv_obj_set_style_text_color(s_status[i].ble, ble_color, 0);
+        lv_label_set_text(s_status[i].ble, ble);
         lv_label_set_text(s_status[i].battery, battery);
+    }
+    if (s_active == UI_SCREEN_HOSTS) {
+        hosts_screen_refresh();
     }
 }
 
@@ -202,6 +210,7 @@ static void menu_screen_create(lv_obj_t *scr)
     } items[] = {
         { LV_SYMBOL_GPS "  Touchpad", UI_SCREEN_TOUCHPAD },
         { LV_SYMBOL_KEYBOARD "  Deck", UI_SCREEN_DECK },
+        { LV_SYMBOL_BLUETOOTH "  Connect", UI_SCREEN_HOSTS },
         { LV_SYMBOL_SETTINGS "  Settings", UI_SCREEN_SETTINGS },
     };
 
@@ -209,14 +218,14 @@ static void menu_screen_create(lv_obj_t *scr)
     lv_obj_remove_style_all(list);
     lv_obj_set_size(list, 220, LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(list, 12, 0);
+    lv_obj_set_style_pad_row(list, 10, 0);
     lv_obj_set_event_bubble(list, true);
     lv_obj_center(list);
 
     for (int i = 0; i < sizeof(items) / sizeof(items[0]); i++) {
         lv_obj_t *btn = lv_button_create(list);
-        lv_obj_set_size(btn, LV_PCT(100), 56);
-        lv_obj_set_style_radius(btn, 28, 0);
+        lv_obj_set_size(btn, LV_PCT(100), 50);
+        lv_obj_set_style_radius(btn, 25, 0);
         lv_obj_set_style_bg_color(btn, theme_button(), 0);
         lv_obj_set_style_shadow_width(btn, 0, 0);
         s_menu_items[items[i].screen] = btn;
@@ -246,6 +255,7 @@ void ui_create(void)
     touchpad_screen_create(s_screens[UI_SCREEN_TOUCHPAD]);
     deck_screen_create(s_screens[UI_SCREEN_DECK]);
     settings_screen_create(s_screens[UI_SCREEN_SETTINGS]);
+    hosts_screen_create(s_screens[UI_SCREEN_HOSTS]);
     menu_screen_create(s_screens[UI_SCREEN_MENU]);
 
     lv_timer_create(refresh_status, 200, NULL);

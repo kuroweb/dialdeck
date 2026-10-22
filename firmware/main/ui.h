@@ -8,6 +8,7 @@ typedef enum {
     UI_SCREEN_TOUCHPAD,
     UI_SCREEN_DECK,
     UI_SCREEN_SETTINGS,
+    UI_SCREEN_HOSTS,
     UI_SCREEN_MENU,     // pulled down from the top of any other screen
     UI_SCREEN_COUNT,
 } ui_screen_t;

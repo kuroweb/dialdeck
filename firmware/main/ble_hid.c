@@ -4,6 +4,9 @@
 #include <string.h>
 
 #include "config_service.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "host_slots.h"
 #include "esp_bt.h"
 #include "esp_check.h"
 #include "esp_hidd.h"
@@ -109,12 +112,30 @@ static const esp_hid_device_config_t s_hid_config = {
 static esp_hidd_dev_t *s_hid_dev;
 static atomic_int s_state = BLE_HID_STATE_STARTING;
 
+// Link state shared by the NimBLE host task (GAP events) and callers switching hosts.
+static SemaphoreHandle_t s_lock;
+static uint16_t s_conn = BLE_HS_CONN_HANDLE_NONE;
+static int s_pairing_slot = -1;   // slot waiting for a new host, or -1
+static bool s_pairing_addr_set;   // random address for this pairing session chosen
+
 static int gap_event(struct ble_gap_event *event, void *arg);
 
+// Advertise for the active slot. A filled slot accepts only its host (allow-list on the identity
+// address; a host using a private address is resolved with the IRK it gave when bonding) and is
+// not discoverable, so other hosts cannot take the link. An empty slot, or one being re-paired, is
+// discoverable and open to new hosts.
+// Call with s_lock held.
 static void advertise(void)
 {
+    const int slot = host_slots_active();
+    const ble_addr_t *host = host_slots_addr(slot);
+    if (host == NULL) {
+        s_pairing_slot = slot;
+    }
+    const bool pairing = s_pairing_slot >= 0;
+
     struct ble_hs_adv_fields fields = {
-        .flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP,
+        .flags = (pairing ? BLE_HS_ADV_F_DISC_GEN : 0) | BLE_HS_ADV_F_BREDR_UNSUP,
         .appearance = ESP_HID_APPEARANCE_GENERIC,
         .appearance_is_present = 1,
         .name = (uint8_t *)DEVICE_NAME,
@@ -129,54 +150,133 @@ static void advertise(void)
         ESP_LOGE(TAG, "adv_set_fields failed: %d", rc);
         return;
     }
+    if (!pairing && (rc = ble_gap_wl_set(host, 1)) != 0) {
+        ESP_LOGE(TAG, "wl_set failed: %d", rc);
+        return;
+    }
+
+    // While pairing, advertise from a fresh random address. Bonded hosts reconnect on their own as
+    // soon as they see the device's public address, and would otherwise grab the open link; they
+    // do not recognise a random one. The new host still learns the public identity address while
+    // bonding, so it reconnects normally afterwards.
+    uint8_t own_addr_type = BLE_OWN_ADDR_PUBLIC;
+    if (pairing) {
+        if (!s_pairing_addr_set) {
+            ble_addr_t random;
+            if (ble_hs_id_gen_rnd(0, &random) != 0 || ble_hs_id_set_rnd(random.val) != 0) {
+                ESP_LOGE(TAG, "random address failed");
+                return;
+            }
+            s_pairing_addr_set = true;
+        }
+        own_addr_type = BLE_OWN_ADDR_RANDOM;
+    }
 
     const struct ble_gap_adv_params params = {
         .conn_mode = BLE_GAP_CONN_MODE_UND,
-        .disc_mode = BLE_GAP_DISC_MODE_GEN,
+        .disc_mode = pairing ? BLE_GAP_DISC_MODE_GEN : BLE_GAP_DISC_MODE_NON,
+        .filter_policy = pairing ? BLE_HCI_ADV_FILT_NONE : BLE_HCI_ADV_FILT_BOTH,
         .itvl_min = BLE_GAP_ADV_ITVL_MS(30),
         .itvl_max = BLE_GAP_ADV_ITVL_MS(50),
     };
-    rc = ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC, NULL, BLE_HS_FOREVER, &params, gap_event, NULL);
+    rc = ble_gap_adv_start(own_addr_type, NULL, BLE_HS_FOREVER, &params, gap_event, NULL);
     if (rc != 0) {
         ESP_LOGE(TAG, "adv_start failed: %d", rc);
         return;
     }
-    atomic_store(&s_state, BLE_HID_STATE_ADVERTISING);
-    ESP_LOGI(TAG, "advertising");
+    atomic_store(&s_state, pairing ? BLE_HID_STATE_PAIRING : BLE_HID_STATE_ADVERTISING);
+    ESP_LOGI(TAG, "advertising for host %d%s", slot + 1, pairing ? " (pairing)" : "");
+}
+
+// Drop the current link, or the current advertising, and advertise for the active slot.
+// Call with s_lock held.
+static void restart_link(void)
+{
+    if (s_conn != BLE_HS_CONN_HANDLE_NONE) {
+        ble_gap_terminate(s_conn, BLE_ERR_REM_USER_CONN_TERM);   // DISCONNECT re-advertises
+    } else {
+        ble_gap_adv_stop();
+        advertise();
+    }
 }
 
 static int gap_event(struct ble_gap_event *event, void *arg)
 {
     struct ble_gap_conn_desc desc;
+    int rc = 0;
 
+    xSemaphoreTakeRecursive(s_lock, portMAX_DELAY);
     switch (event->type) {
     case BLE_GAP_EVENT_CONNECT:
         ESP_LOGI(TAG, "connect status=%d", event->connect.status);
         if (event->connect.status != 0) {
             advertise();
-        } else {
-            // Ask for encryption right away so a bonded host resumes without user action.
-            ble_gap_security_initiate(event->connect.conn_handle);
+            break;
         }
-        return 0;
+        s_conn = event->connect.conn_handle;
+        // Ask for encryption right away so a bonded host resumes without user action.
+        ble_gap_security_initiate(s_conn);
+        break;
     case BLE_GAP_EVENT_DISCONNECT:
         ESP_LOGI(TAG, "disconnect reason=%d", event->disconnect.reason);
+        s_conn = BLE_HS_CONN_HANDLE_NONE;
         advertise();
-        return 0;
-    case BLE_GAP_EVENT_ENC_CHANGE:
+        break;
+    case BLE_GAP_EVENT_ENC_CHANGE: {
+        // The host starts encryption itself, so this can arrive before CONNECT: decide here
+        // whether the peer belongs to the active slot.
         ESP_LOGI(TAG, "encryption status=%d", event->enc_change.status);
-        if (event->enc_change.status == 0) {
-            atomic_store(&s_state, BLE_HID_STATE_CONNECTED);
+        if (event->enc_change.status != 0 || ble_gap_conn_find(event->enc_change.conn_handle, &desc) != 0) {
+            break;
         }
-        return 0;
+        s_conn = event->enc_change.conn_handle;
+        const int owner = host_slots_find(&desc.peer_id_addr);
+        const int wanted = s_pairing_slot >= 0 ? s_pairing_slot : host_slots_active();
+        if (owner >= 0 && owner != wanted) {
+            ESP_LOGI(TAG, "host %d connected while waiting for host %d; refused", owner + 1, wanted + 1);
+            ble_gap_terminate(s_conn, BLE_ERR_REM_USER_CONN_TERM);
+            break;
+        }
+        if (s_pairing_slot >= 0) {
+            host_slots_assign(s_pairing_slot, &desc.peer_id_addr);
+            host_slots_set_active(s_pairing_slot);
+            ESP_LOGI(TAG, "paired host %d", s_pairing_slot + 1);
+            s_pairing_slot = -1;
+            s_pairing_addr_set = false;
+        }
+        atomic_store(&s_state, BLE_HID_STATE_CONNECTED);
+        break;
+    }
     case BLE_GAP_EVENT_REPEAT_PAIRING:
         // The host lost its bond (e.g. "Forget this device"); drop ours and pair again.
         if (ble_gap_conn_find(event->repeat_pairing.conn_handle, &desc) == 0) {
             ble_store_util_delete_peer(&desc.peer_id_addr);
         }
-        return BLE_GAP_REPEAT_PAIRING_RETRY;
+        rc = BLE_GAP_REPEAT_PAIRING_RETRY;
+        break;
     default:
-        return 0;
+        break;
+    }
+    xSemaphoreGiveRecursive(s_lock);
+    return rc;
+}
+
+// Before host slots existed the device kept one bond and accepted any host. Give existing
+// bonds slots so those hosts keep working.
+static void adopt_existing_bonds(void)
+{
+    for (int i = 0; i < HOST_SLOT_COUNT; i++) {
+        if (host_slots_addr(i)) {
+            return;
+        }
+    }
+    ble_addr_t peers[HOST_SLOT_COUNT];
+    int count = 0;
+    if (ble_store_util_bonded_peers(peers, &count, HOST_SLOT_COUNT) != 0) {
+        return;
+    }
+    for (int i = 0; i < count; i++) {
+        host_slots_assign(i, &peers[i]);
     }
 }
 
@@ -184,7 +284,10 @@ static void hidd_event(void *handler_args, esp_event_base_t base, int32_t id, vo
 {
     switch ((esp_hidd_event_t)id) {
     case ESP_HIDD_START_EVENT:
+        xSemaphoreTakeRecursive(s_lock, portMAX_DELAY);
+        adopt_existing_bonds();
         advertise();
+        xSemaphoreGiveRecursive(s_lock);
         break;
     default:
         break;
@@ -201,6 +304,7 @@ void ble_store_config_init(void);
 
 void ble_hid_init(void)
 {
+    s_lock = xSemaphoreCreateRecursiveMutex();
     ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT));
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_bt_controller_init(&bt_cfg));
@@ -227,6 +331,45 @@ void ble_hid_init(void)
 ble_hid_state_t ble_hid_state(void)
 {
     return atomic_load(&s_state);
+}
+
+int ble_hid_host(void)
+{
+    return host_slots_active();
+}
+
+bool ble_hid_host_paired(int slot)
+{
+    return host_slots_addr(slot) != NULL;
+}
+
+void ble_hid_select_host(int slot)
+{
+    xSemaphoreTakeRecursive(s_lock, portMAX_DELAY);
+    s_pairing_slot = -1;
+    s_pairing_addr_set = false;
+    host_slots_set_active(slot);
+    restart_link();
+    xSemaphoreGiveRecursive(s_lock);
+}
+
+void ble_hid_pair_host(int slot)
+{
+    xSemaphoreTakeRecursive(s_lock, portMAX_DELAY);
+    const ble_addr_t *old = host_slots_addr(slot);
+    if (old) {
+        const ble_addr_t forgotten = *old;
+        host_slots_assign(slot, NULL);
+        // Keep the bond if another slot still uses this host.
+        if (host_slots_find(&forgotten) < 0) {
+            ble_store_util_delete_peer(&forgotten);
+        }
+    }
+    host_slots_set_active(slot);
+    s_pairing_slot = slot;
+    s_pairing_addr_set = false;
+    restart_link();
+    xSemaphoreGiveRecursive(s_lock);
 }
 
 static int take_step(int *value)

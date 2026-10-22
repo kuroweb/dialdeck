@@ -1,10 +1,12 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef enum {
     BLE_HID_STATE_STARTING,
-    BLE_HID_STATE_ADVERTISING,
+    BLE_HID_STATE_ADVERTISING, // waiting for the active host to connect
+    BLE_HID_STATE_PAIRING,     // waiting for a new host to pair into the active slot
     BLE_HID_STATE_CONNECTED,   // link encrypted, reports reach the host
 } ble_hid_state_t;
 
@@ -13,6 +15,16 @@ typedef enum {
 void ble_hid_init(void);
 
 ble_hid_state_t ble_hid_state(void);
+
+// The device remembers up to HOST_SLOT_COUNT hosts and talks to one at a time.
+int ble_hid_host(void);
+bool ble_hid_host_paired(int slot);
+
+// Switch to the host in `slot`. An empty slot starts pairing.
+void ble_hid_select_host(int slot);
+
+// Forget the host in `slot`, if any, and wait for a new host to pair into it.
+void ble_hid_pair_host(int slot);
 
 #define BLE_HID_BUTTON_LEFT   0x01
 #define BLE_HID_BUTTON_RIGHT  0x02
