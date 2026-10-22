@@ -33,7 +33,7 @@ typedef enum {
     STATE_TAP_PENDING,  // tapped; waiting to see whether a second touch follows
     STATE_DRAG,         // second touch: left button held until release
     STATE_DONE,         // long press already fired: ignore the rest of this touch
-    STATE_IGNORED,      // touch started at the top edge: it may pull down the settings panel
+    STATE_IGNORED,      // touch started at the top edge: it may pull down the menu
 } state_t;
 
 static QueueHandle_t s_reports;
