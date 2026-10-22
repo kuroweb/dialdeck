@@ -16,6 +16,9 @@ void ble_hid_init(void);
 
 ble_hid_state_t ble_hid_state(void);
 
+// Handle of the encrypted link to the active host, or BLE_HS_CONN_HANDLE_NONE.
+uint16_t ble_hid_conn(void);
+
 // The device remembers up to HOST_SLOT_COUNT hosts and talks to one at a time.
 int ble_hid_host(void);
 bool ble_hid_host_paired(int slot);

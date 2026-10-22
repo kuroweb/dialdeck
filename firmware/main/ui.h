@@ -7,6 +7,8 @@
 typedef enum {
     UI_SCREEN_TOUCHPAD,
     UI_SCREEN_DECK,
+    UI_SCREEN_AGENTS,
+    UI_SCREEN_AGENT,    // one agent, opened from the agents list
     UI_SCREEN_SETTINGS,
     UI_SCREEN_HOSTS,
     UI_SCREEN_MENU,     // pulled down from the top of any other screen
@@ -17,6 +19,9 @@ typedef enum {
 void ui_create(void);
 
 ui_screen_t ui_active(void);
+
+// Switch to another screen. Call with the LVGL lock held.
+void ui_show(ui_screen_t screen);
 
 // True if a touch starting at p may pull down the menu rather than being input for the touchpad.
 bool ui_is_pull_down_start(lv_point_t p);

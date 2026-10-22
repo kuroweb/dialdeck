@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "agents.h"
+#include "agents_screen.h"
 #include "battery.h"
 #include "ble_hid.h"
 #include "board.h"
@@ -23,9 +25,10 @@
 static lv_obj_t *s_screens[UI_SCREEN_COUNT];
 static ui_screen_t s_active;
 static ui_screen_t s_before_menu;   // where pushing the menu up returns to
-// Phone-style status bar at the top of every screen: Bluetooth on the left, battery on the right.
+// Phone-style status bar at the top of every screen: Bluetooth, battery, herdr agents.
 typedef struct {
     lv_obj_t *ble;
+    lv_obj_t *attention;   // herdr agents: most urgent status, and how many are blocked or done
     lv_obj_t *battery;
 } status_bar_t;
 static status_bar_t s_status[UI_SCREEN_COUNT];
@@ -61,6 +64,11 @@ static void mark_menu_item(ui_screen_t current)
             lv_obj_set_style_bg_color(s_menu_items[i], i == current ? theme_accent() : theme_button(), 0);
         }
     }
+}
+
+void ui_show(ui_screen_t screen)
+{
+    show(screen, LV_SCREEN_LOAD_ANIM_FADE_IN);
 }
 
 static void open_menu(void)
@@ -149,11 +157,27 @@ static void refresh_status(lv_timer_t *t)
     snprintf(ble, sizeof(ble), LV_SYMBOL_BLUETOOTH "%d", ble_hid_host() + 1);
     char battery[16];
     battery_text(battery, sizeof(battery));
+    const int attention = agents_attention();
+    const int dominant = agents_dominant();
+    // Always shown, like Bluetooth and the battery. Like the Raycast menu bar, the count appears
+    // only when something needs the user. With no agents, a dim dot; dimmer still before the Mac
+    // app has sent anything.
+    char agents[16];
+    lv_color_t agents_color;
+    if (dominant >= 0) {
+        snprintf(agents, sizeof(agents), attention > 0 ? "%s%d" : "%s", agents_status_icon(dominant), attention);
+        agents_color = agents_status_color(dominant);
+    } else {
+        snprintf(agents, sizeof(agents), "%s", agents_status_icon(AGENT_IDLE));
+        agents_color = agents_known() ? theme_text_muted() : theme_button_dim();
+    }
 
     for (int i = 0; i < UI_SCREEN_COUNT; i++) {
         lv_obj_set_style_text_color(s_status[i].ble, ble_color, 0);
         lv_label_set_text(s_status[i].ble, ble);
         lv_label_set_text(s_status[i].battery, battery);
+        lv_label_set_text(s_status[i].attention, agents);
+        lv_obj_set_style_text_color(s_status[i].attention, agents_color, 0);
     }
     if (s_active == UI_SCREEN_HOSTS) {
         hosts_screen_refresh();
@@ -174,6 +198,7 @@ static void status_bar_create(ui_screen_t screen, int y)
     lv_label_set_text(s_status[screen].ble, LV_SYMBOL_BLUETOOTH);
     s_status[screen].battery = lv_label_create(bar);
     lv_obj_set_style_text_color(s_status[screen].battery, theme_text_muted(), 0);
+    s_status[screen].attention = lv_label_create(bar);
 }
 
 static void touchpad_screen_create(lv_obj_t *scr)
@@ -210,6 +235,7 @@ static void menu_screen_create(lv_obj_t *scr)
     } items[] = {
         { LV_SYMBOL_GPS "  Touchpad", UI_SCREEN_TOUCHPAD },
         { LV_SYMBOL_KEYBOARD "  Deck", UI_SCREEN_DECK },
+        { LV_SYMBOL_LIST "  Agents", UI_SCREEN_AGENTS },
         { LV_SYMBOL_BLUETOOTH "  Connect", UI_SCREEN_HOSTS },
         { LV_SYMBOL_SETTINGS "  Settings", UI_SCREEN_SETTINGS },
     };
@@ -218,14 +244,14 @@ static void menu_screen_create(lv_obj_t *scr)
     lv_obj_remove_style_all(list);
     lv_obj_set_size(list, 220, LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(list, 10, 0);
+    lv_obj_set_style_pad_row(list, 8, 0);
     lv_obj_set_event_bubble(list, true);
     lv_obj_center(list);
 
     for (int i = 0; i < sizeof(items) / sizeof(items[0]); i++) {
         lv_obj_t *btn = lv_button_create(list);
-        lv_obj_set_size(btn, LV_PCT(100), 50);
-        lv_obj_set_style_radius(btn, 25, 0);
+        lv_obj_set_size(btn, LV_PCT(100), 44);
+        lv_obj_set_style_radius(btn, 22, 0);
         lv_obj_set_style_bg_color(btn, theme_button(), 0);
         lv_obj_set_style_shadow_width(btn, 0, 0);
         s_menu_items[items[i].screen] = btn;
@@ -254,6 +280,7 @@ void ui_create(void)
     }
     touchpad_screen_create(s_screens[UI_SCREEN_TOUCHPAD]);
     deck_screen_create(s_screens[UI_SCREEN_DECK]);
+    agents_screen_create(s_screens[UI_SCREEN_AGENTS], s_screens[UI_SCREEN_AGENT]);
     settings_screen_create(s_screens[UI_SCREEN_SETTINGS]);
     hosts_screen_create(s_screens[UI_SCREEN_HOSTS]);
     menu_screen_create(s_screens[UI_SCREEN_MENU]);
@@ -268,6 +295,12 @@ void ui_knob(int detents)
     switch (s_active) {
     case UI_SCREEN_DECK:
         deck_screen_knob(detents);
+        break;
+    case UI_SCREEN_AGENTS:
+        agents_screen_list_knob(detents);
+        break;
+    case UI_SCREEN_AGENT:
+        agents_screen_detail_knob(detents);
         break;
     case UI_SCREEN_SETTINGS:
         settings_screen_knob(detents);

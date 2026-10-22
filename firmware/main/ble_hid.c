@@ -333,6 +333,11 @@ ble_hid_state_t ble_hid_state(void)
     return atomic_load(&s_state);
 }
 
+uint16_t ble_hid_conn(void)
+{
+    return ble_hid_state() == BLE_HID_STATE_CONNECTED ? s_conn : BLE_HS_CONN_HANDLE_NONE;
+}
+
 int ble_hid_host(void)
 {
     return host_slots_active();

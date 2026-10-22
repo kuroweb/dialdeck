@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "agents.h"
+#include "ble_hid.h"
 #include "deck_config.h"
 #include "esp_log.h"
 #include "host/ble_hs.h"
@@ -9,7 +11,7 @@
 
 static const char *TAG = "config_service";
 
-#define PROTOCOL_VERSION  2
+#define PROTOCOL_VERSION  3
 
 // 98d3462c-2eb8-4022-ba87-4f253e72a24b and characteristics sharing its base.
 // NimBLE takes 128-bit UUIDs least significant byte first.
@@ -20,6 +22,10 @@ static const ble_uuid128_t s_service_uuid = CONFIG_UUID(0x2c);
 static const ble_uuid128_t s_info_uuid = CONFIG_UUID(0x2d);
 static const ble_uuid128_t s_deck_uuid = CONFIG_UUID(0x2e);
 static const ble_uuid128_t s_settings_uuid = CONFIG_UUID(0x2f);
+static const ble_uuid128_t s_agents_uuid = CONFIG_UUID(0x30);
+static const ble_uuid128_t s_action_uuid = CONFIG_UUID(0x31);
+
+static uint16_t s_action_handle;
 
 // Info: [protocol version, slot count, label length].
 static int access_info(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
@@ -75,6 +81,25 @@ static int access_settings(uint16_t conn, uint16_t attr, struct ble_gatt_access_
     return 0;
 }
 
+// Agents: the Mac app writes the whole herdr agent list whenever it changes.
+static int access_agents(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    // The list can exceed one ATT packet; the Mac sends it as a long write, which NimBLE
+    // reassembles before calling here.
+    static uint8_t buf[512];
+    uint16_t len = 0;
+    if (OS_MBUF_PKTLEN(ctxt->om) > sizeof(buf) || ble_hs_mbuf_to_flat(ctxt->om, buf, sizeof(buf), &len) != 0) {
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+    return agents_replace(buf, len) ? 0 : BLE_ATT_ERR_VALUE_NOT_ALLOWED;
+}
+
+// Action: notify only. The value is sent with config_service_send_action().
+static int access_action(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    return BLE_ATT_ERR_READ_NOT_PERMITTED;
+}
+
 static const struct ble_gatt_svc_def s_services[] = {
     {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
@@ -98,6 +123,17 @@ static const struct ble_gatt_svc_def s_services[] = {
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC |
                          BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
             },
+            {
+                .uuid = &s_agents_uuid.u,
+                .access_cb = access_agents,
+                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
+            },
+            {
+                .uuid = &s_action_uuid.u,
+                .access_cb = access_action,
+                .val_handle = &s_action_handle,
+                .flags = BLE_GATT_CHR_F_NOTIFY,
+            },
             { 0 },
         },
     },
@@ -108,4 +144,19 @@ void config_service_register(void)
 {
     ESP_ERROR_CHECK(ble_gatts_count_cfg(s_services));
     ESP_ERROR_CHECK(ble_gatts_add_svcs(s_services));
+}
+
+bool config_service_send_action(int action, const char *agent_id)
+{
+    const uint16_t conn = ble_hid_conn();
+    if (conn == BLE_HS_CONN_HANDLE_NONE) {
+        return false;
+    }
+    uint8_t buf[2 + AGENT_ID_LEN];
+    const size_t id_len = strnlen(agent_id, AGENT_ID_LEN - 1);
+    buf[0] = (uint8_t)action;
+    buf[1] = (uint8_t)id_len;
+    memcpy(buf + 2, agent_id, id_len);
+    struct os_mbuf *om = ble_hs_mbuf_from_flat(buf, 2 + id_len);
+    return om != NULL && ble_gatts_notify_custom(conn, s_action_handle, om) == 0;
 }

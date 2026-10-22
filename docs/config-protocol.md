@@ -1,6 +1,6 @@
 # 設定用 GATT サービス
 
-Mac アプリがボタン画面の割り当てと、タッチパッドなどの設定を読み書きするための BLE GATT サービス。ファーム側は `firmware/main/config_service.c`、Mac 側は `mac/Sources/DialDeckKit/DeviceLink.swift`。
+Mac アプリがボタン画面の割り当てと、タッチパッドなどの設定を読み書きし、herdr の agent をやり取りするための BLE GATT サービス。ファーム側は `firmware/main/config_service.c`、Mac 側は `mac/Sources/DialDeckKit/DeviceLink.swift`。
 
 macOS は DialDeck をキーボードとマウスとして接続したままにする。Mac アプリはスキャンせず、接続済みの DialDeck を取得して同じ接続でこのサービスを使う。
 
@@ -12,10 +12,12 @@ macOS は DialDeck をキーボードとマウスとして接続したままに�
 | info | `98d3462d-2eb8-4022-ba87-4f253e72a24b` |
 | deck | `98d3462e-2eb8-4022-ba87-4f253e72a24b` |
 | settings | `98d3462f-2eb8-4022-ba87-4f253e72a24b` |
+| agents | `98d34630-2eb8-4022-ba87-4f253e72a24b` |
+| action | `98d34631-2eb8-4022-ba87-4f253e72a24b` |
 
 ## info（読み取り）
 
-3 バイト: `[プロトコル版, スロット数, ラベル長]`。今はプロトコル版 2、スロット数 9、ラベル長 16。Mac アプリはプロトコル版が一致しないとき接続を止める。
+3 バイト: `[プロトコル版, スロット数, ラベル長]`。今はプロトコル版 3、スロット数 9、ラベル長 16。Mac アプリはプロトコル版が一致しないとき接続を止める。
 
 ## deck（読み取り・書き込み、暗号化必須）
 
@@ -53,9 +55,34 @@ macOS は DialDeck をキーボードとマウスとして接続したままに�
 - 読み取り: 今の値
 - 書き込み: 24 バイトで全部を置き換える。範囲外の値が 1 つでもあれば何も変えず `Value Not Allowed` で拒否する。受け付けると、すぐに反映して NVS に保存し、デバイスの設定画面の表示も更新する
 
+## agents（書き込み、暗号化必須）
+
+Mac アプリが herdr の agent の一覧を丸ごと書き込む。一覧が変わったときと、デバイスがつなぎ直したときに送る。最大 512 バイトで、1 パケットに収まらないときは long write になる。
+
+`[件数]` に続けて、agent ごとに次を並べる。件数は最大 8。
+
+| 長さ | 内容 |
+| --- | --- |
+| 1 | 状態（0 blocked、1 done、2 working、3 idle、4 unknown）。この順に並べて送る |
+| 1 + n | herdr の pane ID（agent コマンドの対象）。先頭 1 バイトが長さ、最大 23 バイト |
+| 1 + n | タイトル（`terminal_title_stripped`）。UTF-8、最大 95 バイト |
+| 1 + n | blocked の agent が聞いていること（`agent read --source detection` の最後の数行）。UTF-8、最大 159 バイト。blocked でなければ空 |
+
+文字の途中で切らない。512 バイトを超えるときは、先に聞いていることを短くする。形式が崩れていれば `Value Not Allowed` で拒否し、前の一覧のまま変えない。
+
+## action（通知）
+
+デバイスで agent を操作したとき、デバイスから Mac アプリに通知する。Mac アプリは接続時に購読する。
+
+`[操作][ID の長さ][pane ID]`。操作は 1 Focus、2 Enter、3 Esc、4 上、5 下。
+
+- Focus: herdr で workspace、tab、pane の順にフォーカスし、起動中のターミナルアプリを前面に出す
+- Enter / Esc / 上 / 下: `agent send-keys` でそのキーを送る
+
 ## 版の履歴
 
 | 版 | 変更 |
 | --- | --- |
 | 1 | info と deck |
 | 2 | settings を追加 |
+| 3 | agents と action を追加 |

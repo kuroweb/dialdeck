@@ -1,3 +1,4 @@
+#include "agents.h"
 #include "battery.h"
 #include "ble_hid.h"
 #include "deck_config.h"
@@ -77,6 +78,7 @@ void app_main(void)
     settings_load();
     deck_config_load();
     host_slots_load();
+    agents_init();
 
     display_init();
     display_set_brightness(settings()->brightness);
