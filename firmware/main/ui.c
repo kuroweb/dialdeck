@@ -161,7 +161,7 @@ void ui_create(void)
 
     lv_timer_create(tick, TICK_MS, NULL);
     status_bar_refresh();
-    show(UI_SCREEN_TOUCHPAD, LV_SCREEN_LOAD_ANIM_NONE);
+    show(UI_SCREEN_AGENTS, LV_SCREEN_LOAD_ANIM_NONE);
 }
 
 void ui_knob(int detents)

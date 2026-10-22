@@ -16,7 +16,7 @@ typedef enum {
     UI_SCREEN_COUNT,
 } ui_screen_t;
 
-// Build all screens and show the touchpad. Call with the LVGL lock held.
+// Build all screens and show the agents screen. Call with the LVGL lock held.
 void ui_create(void);
 
 ui_screen_t ui_active(void);
