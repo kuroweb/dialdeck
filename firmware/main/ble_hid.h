@@ -14,7 +14,8 @@ void ble_hid_init(void);
 
 ble_hid_state_t ble_hid_state(void);
 
-#define BLE_HID_BUTTON_LEFT  0x01
+#define BLE_HID_BUTTON_LEFT   0x01
+#define BLE_HID_BUTTON_RIGHT  0x02
 
 // Send pointer movement, wheel (positive = scroll up) and the held buttons.
 // Large movements are split into several reports. Dropped while not connected.

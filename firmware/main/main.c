@@ -23,9 +23,24 @@ static void nvs_init(void)
 // screens it drives the screen itself.
 static void input_task(void *arg)
 {
+    uint8_t buttons = 0;   // last buttons sent, so the wheel does not drop a held drag
     while (1) {
-        int dx, dy, clicks;
-        touchpad_take(&dx, &dy, &clicks);
+        // Send touchpad reports in order; consecutive moves with the same buttons go as one.
+        touchpad_report_t r;
+        bool have = touchpad_next(&r);
+        while (have) {
+            touchpad_report_t next;
+            have = touchpad_next(&next);
+            while (have && next.buttons == r.buttons) {
+                r.dx += next.dx;
+                r.dy += next.dy;
+                have = touchpad_next(&next);
+            }
+            ble_hid_mouse(r.dx, r.dy, 0, r.buttons);
+            buttons = r.buttons;
+            r = next;
+        }
+
         const int detents = knob_take_scroll();
 
         int wheel = 0;
@@ -40,12 +55,8 @@ static void input_task(void *arg)
             lvgl_port_unlock();
         }
 
-        if (dx != 0 || dy != 0 || wheel != 0) {
-            ble_hid_mouse(dx, dy, wheel, 0);
-        }
-        for (; clicks > 0; clicks--) {
-            ble_hid_mouse(0, 0, 0, BLE_HID_BUTTON_LEFT);
-            ble_hid_mouse(0, 0, 0, 0);
+        if (wheel != 0) {
+            ble_hid_mouse(0, 0, wheel, buttons);
         }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
