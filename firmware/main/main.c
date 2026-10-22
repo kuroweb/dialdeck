@@ -1,60 +1,45 @@
-// Mouse mode: the screen is a touchpad, the knob scrolls the host.
 #include "ble_hid.h"
 #include "display.h"
 #include "esp_lvgl_port.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "knob.h"
+#include "nvs_flash.h"
+#include "settings.h"
 #include "touchpad.h"
+#include "ui.h"
 
-// Wheel units per detent; the sign sets which way the knob scrolls. Checked on macOS with
-// natural scrolling as set on the test Mac. The host's natural scrolling setting also flips it.
-#define SCROLL_PER_DETENT  1
-
-static lv_obj_t *s_knob_label;
-static lv_obj_t *s_ble_label;
-
-static void refresh_status(lv_timer_t *t)
+static void nvs_init(void)
 {
-    static const char *const names[] = {
-        [BLE_HID_STATE_STARTING] = "BLE starting",
-        [BLE_HID_STATE_ADVERTISING] = "BLE waiting",
-        [BLE_HID_STATE_CONNECTED] = "BLE connected",
-    };
-    lv_label_set_text_fmt(s_knob_label, "knob %d", knob_position());
-    lv_label_set_text(s_ble_label, names[ble_hid_state()]);
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
 }
 
-static void ui_create(void)
-{
-    lv_obj_t *scr = lv_screen_active();
-    lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
-    touchpad_attach(scr);
-
-    lv_obj_t *title = lv_label_create(scr);
-    lv_label_set_text(title, "DialDeck");
-    lv_obj_set_style_text_color(title, lv_color_white(), 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
-    lv_obj_align(title, LV_ALIGN_CENTER, 0, -50);
-
-    s_knob_label = lv_label_create(scr);
-    lv_obj_set_style_text_color(s_knob_label, lv_palette_main(LV_PALETTE_AMBER), 0);
-    lv_obj_align(s_knob_label, LV_ALIGN_CENTER, 0, 40);
-
-    s_ble_label = lv_label_create(scr);
-    lv_obj_set_style_text_color(s_ble_label, lv_palette_main(LV_PALETTE_LIGHT_BLUE), 0);
-    lv_obj_align(s_ble_label, LV_ALIGN_CENTER, 0, 80);
-
-    lv_timer_create(refresh_status, 50, NULL);
-    refresh_status(NULL);
-}
-
-static void mouse_task(void *arg)
+// Forward touchpad and knob input. On the touchpad screen the knob scrolls the host; on other
+// screens it drives the screen itself.
+static void input_task(void *arg)
 {
     while (1) {
         int dx, dy, clicks;
         touchpad_take(&dx, &dy, &clicks);
-        const int wheel = knob_take_scroll() * SCROLL_PER_DETENT;
+        const int detents = knob_take_scroll();
+
+        int wheel = 0;
+        if (ui_active() == UI_SCREEN_TOUCHPAD) {
+            // The sign was checked on macOS with natural scrolling as set on the test Mac; the
+            // host's natural scrolling setting flips it too, hence the setting.
+            const settings_t *cfg = settings();
+            wheel = detents * cfg->scroll_step * (cfg->scroll_reverse ? -1 : 1);
+        } else if (detents != 0) {
+            lvgl_port_lock(0);
+            ui_knob(detents);
+            lvgl_port_unlock();
+        }
+
         if (dx != 0 || dy != 0 || wheel != 0) {
             ble_hid_mouse(dx, dy, wheel, 0);
         }
@@ -68,7 +53,11 @@ static void mouse_task(void *arg)
 
 void app_main(void)
 {
+    nvs_init();
+    settings_load();
+
     display_init();
+    display_set_brightness(settings()->brightness);
     knob_init();
     ble_hid_init();
 
@@ -76,5 +65,5 @@ void app_main(void)
     ui_create();
     lvgl_port_unlock();
 
-    xTaskCreate(mouse_task, "mouse", 3072, NULL, 5, NULL);
+    xTaskCreate(input_task, "input", 4096, NULL, 5, NULL);
 }

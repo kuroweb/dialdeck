@@ -17,6 +17,7 @@ static const char *TAG = "display";
 
 #define LCD_HOST          SPI2_HOST
 #define DRAW_BUF_LINES    40
+#define BL_DUTY_MAX       1023
 
 static void backlight_init(void)
 {
@@ -34,9 +35,15 @@ static void backlight_init(void)
         .speed_mode = LEDC_LOW_SPEED_MODE,
         .channel = LEDC_CHANNEL_0,
         .timer_sel = LEDC_TIMER_0,
-        .duty = 1023,
+        .duty = BL_DUTY_MAX,
     };
     ESP_ERROR_CHECK(ledc_channel_config(&channel));
+}
+
+void display_set_brightness(int percent)
+{
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, BL_DUTY_MAX * percent / 100);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
 }
 
 static void panel_init(esp_lcd_panel_io_handle_t *ret_io, esp_lcd_panel_handle_t *ret_panel)

@@ -8,7 +8,8 @@ typedef enum {
     BLE_HID_STATE_CONNECTED,   // link encrypted, reports reach the host
 } ble_hid_state_t;
 
-// Start NimBLE and advertise as a BLE HID mouse. Bonds persist in NVS.
+// Start NimBLE and advertise as a BLE HID mouse. Bonds persist in NVS, so call after
+// nvs_flash_init().
 void ble_hid_init(void);
 
 ble_hid_state_t ble_hid_state(void);
