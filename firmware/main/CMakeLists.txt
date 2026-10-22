@@ -1,5 +1,6 @@
 idf_component_register(SRCS "main.c" "display.c" "knob.c" "ble_hid.c" "touchpad.c"
                             "settings.c" "settings_screen.c" "ui.c" "deck_screen.c"
+                            "touchpad_screen.c" "status_bar.c" "widgets.c"
                             "deck_config.c" "config_service.c" "battery.c"
                             "host_slots.c" "hosts_screen.c"
                             "fonts/font_ja.c" "fonts/font_ja_16.c"

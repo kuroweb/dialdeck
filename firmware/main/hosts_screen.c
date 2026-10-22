@@ -1,8 +1,9 @@
-#include "hosts_screen.h"
-
+// The hosts the device can switch between. Tap a host to switch to it (an empty slot starts
+// pairing); hold one to forget it and pair a new host in its place.
 #include "ble_hid.h"
 #include "host_slots.h"
-#include "theme.h"
+#include "screen.h"
+#include "widgets.h"
 
 static lv_obj_t *s_rows[HOST_SLOT_COUNT];
 static lv_obj_t *s_states[HOST_SLOT_COUNT];
@@ -20,7 +21,7 @@ static void on_hold(lv_event_t *e)
     ble_hid_pair_host((int)(intptr_t)lv_event_get_user_data(e));
 }
 
-void hosts_screen_refresh(void)
+static void tick(void)
 {
     const int active = ble_hid_host();
     const ble_hid_state_t state = ble_hid_state();
@@ -34,56 +35,28 @@ void hosts_screen_refresh(void)
             text = "Empty";
         }
         lv_label_set_text(s_states[i], text);
-        lv_obj_set_style_bg_color(s_rows[i], i == active ? theme_accent() : theme_button_dim(), 0);
+        widget_row_set_selected(s_rows[i], i == active);
     }
 }
 
-void hosts_screen_create(lv_obj_t *scr)
+static void create(lv_obj_t *scr)
 {
-    lv_obj_t *title = lv_label_create(scr);
-    lv_label_set_text(title, "Connect");
-    lv_obj_set_style_text_color(title, lv_color_white(), 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 52);
-
-    lv_obj_t *list = lv_obj_create(scr);
-    lv_obj_remove_style_all(list);
-    lv_obj_set_size(list, 240, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(list, 10, 0);
-    lv_obj_set_event_bubble(list, true);
-    lv_obj_align(list, LV_ALIGN_CENTER, 0, 6);
-
+    widget_title(scr, "Connect");
+    lv_obj_t *list = widget_list(scr, 6);
     for (int i = 0; i < HOST_SLOT_COUNT; i++) {
-        lv_obj_t *row = lv_obj_create(list);
-        lv_obj_remove_style_all(row);
-        lv_obj_set_size(row, LV_PCT(100), 48);
-        lv_obj_set_style_radius(row, 24, 0);
-        lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
-        lv_obj_set_style_pad_hor(row, 20, 0);
-        lv_obj_set_clickable(row, true);
-        lv_obj_set_event_bubble(row, true);
+        char label[24];
+        lv_snprintf(label, sizeof(label), LV_SYMBOL_BLUETOOTH "  Host %d", i + 1);
         // SHORT_CLICKED does not fire after a long press, so holding does not also switch.
-        lv_obj_add_event_cb(row, on_tap, LV_EVENT_SHORT_CLICKED, (void *)(intptr_t)i);
-        lv_obj_add_event_cb(row, on_hold, LV_EVENT_LONG_PRESSED, (void *)(intptr_t)i);
-
-        lv_obj_t *name = lv_label_create(row);
-        lv_label_set_text_fmt(name, LV_SYMBOL_BLUETOOTH "  Host %d", i + 1);
-        lv_obj_set_style_text_color(name, lv_color_white(), 0);
-        lv_obj_set_style_text_font(name, &lv_font_montserrat_20, 0);
-        lv_obj_align(name, LV_ALIGN_LEFT_MID, 0, 0);
-
-        s_states[i] = lv_label_create(row);
-        lv_obj_set_style_text_color(s_states[i], lv_color_white(), 0);
-        lv_obj_align(s_states[i], LV_ALIGN_RIGHT_MID, 0, 0);
-
-        s_rows[i] = row;
+        s_rows[i] = widget_row(list, label, &s_states[i], on_tap, LV_EVENT_SHORT_CLICKED, (void *)(intptr_t)i);
+        lv_obj_add_event_cb(s_rows[i], on_hold, LV_EVENT_LONG_PRESSED, (void *)(intptr_t)i);
     }
-
-    lv_obj_t *hint = lv_label_create(scr);
-    lv_label_set_text(hint, "Tap to switch, hold to pair again");
-    lv_obj_set_style_text_color(hint, theme_text_muted(), 0);
-    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -40);
-
-    hosts_screen_refresh();
+    widget_hint(scr, "Tap to switch, hold to pair again");
+    tick();
 }
+
+const screen_def_t hosts_screen = {
+    .name = "Connect",
+    .icon = LV_SYMBOL_BLUETOOTH,
+    .create = create,
+    .tick = tick,
+};

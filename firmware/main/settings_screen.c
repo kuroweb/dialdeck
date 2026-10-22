@@ -1,11 +1,12 @@
-#include "settings_screen.h"
-
+// Touchpad, knob and display settings. Tap a row to select it, turn the knob to change it; the
+// selected row shows arrows around its value.
 #include <stddef.h>
 
 #include "display.h"
 #include "esp_lvgl_port.h"
+#include "screen.h"
 #include "settings.h"
-#include "theme.h"
+#include "widgets.h"
 
 typedef enum {
     FMT_X100,
@@ -44,27 +45,37 @@ static void render_value(int i)
 {
     const item_t *item = &s_items[i];
     const int v = (int)*item_value(item);
+    char text[16];
     switch (item->format) {
     case FMT_X100:
-        lv_label_set_text_fmt(s_values[i], "%d.%02d", v / 100, v % 100);
+        lv_snprintf(text, sizeof(text), "%d.%02d", v / 100, v % 100);
         break;
     case FMT_INT:
-        lv_label_set_text_fmt(s_values[i], "%d", v);
+        lv_snprintf(text, sizeof(text), "%d", v);
         break;
     case FMT_PERCENT:
-        lv_label_set_text_fmt(s_values[i], "%d%%", v);
+        lv_snprintf(text, sizeof(text), "%d%%", v);
         break;
     case FMT_DIRECTION:
-        lv_label_set_text(s_values[i], v ? "Reverse" : "Normal");
+        lv_snprintf(text, sizeof(text), "%s", v ? "Reverse" : "Normal");
         break;
+    }
+    // Arrows on the selected row show that the knob changes it.
+    if (i == s_selected) {
+        lv_label_set_text_fmt(s_values[i], LV_SYMBOL_LEFT " %s " LV_SYMBOL_RIGHT, text);
+    } else {
+        lv_label_set_text(s_values[i], text);
     }
 }
 
 static void select_row(int i)
 {
-    lv_obj_set_style_bg_color(s_rows[s_selected], theme_button_dim(), 0);
+    const int previous = s_selected;
     s_selected = i;
-    lv_obj_set_style_bg_color(s_rows[s_selected], theme_accent(), 0);
+    widget_row_set_selected(s_rows[previous], false);
+    widget_row_set_selected(s_rows[i], true);
+    render_value(previous);
+    render_value(i);
 }
 
 static void on_row(lv_event_t *e)
@@ -72,7 +83,7 @@ static void on_row(lv_event_t *e)
     select_row((int)(intptr_t)lv_event_get_user_data(e));
 }
 
-void settings_screen_knob(int detents)
+static void knob(int detents)
 {
     const item_t *item = &s_items[s_selected];
     int32_t *value = item_value(item);
@@ -102,52 +113,22 @@ static void on_settings_change(void)
     display_set_brightness(settings()->brightness);
 }
 
-void settings_screen_create(lv_obj_t *scr)
+static void create(lv_obj_t *scr)
 {
-    lv_obj_t *title = lv_label_create(scr);
-    lv_label_set_text(title, "Settings");
-    lv_obj_set_style_text_color(title, lv_color_white(), 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 52);
-
-    lv_obj_t *list = lv_obj_create(scr);
-    lv_obj_remove_style_all(list);
-    lv_obj_set_size(list, 260, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(list, 4, 0);
-    lv_obj_set_event_bubble(list, true);
-    lv_obj_align(list, LV_ALIGN_CENTER, 0, 10);
-
+    widget_title(scr, "Settings");
+    lv_obj_t *list = widget_list(scr, 16);
     for (int i = 0; i < ITEM_COUNT; i++) {
-        lv_obj_t *row = lv_obj_create(list);
-        lv_obj_remove_style_all(row);
-        lv_obj_set_size(row, LV_PCT(100), 32);
-        lv_obj_set_style_radius(row, 16, 0);
-        lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
-        lv_obj_set_style_bg_color(row, theme_button_dim(), 0);
-        lv_obj_set_style_pad_hor(row, 14, 0);
-        lv_obj_set_clickable(row, true);
-        lv_obj_set_event_bubble(row, true);
-        lv_obj_add_event_cb(row, on_row, LV_EVENT_CLICKED, (void *)(intptr_t)i);
-
-        lv_obj_t *name = lv_label_create(row);
-        lv_label_set_text(name, s_items[i].name);
-        lv_obj_set_style_text_color(name, lv_color_white(), 0);
-        lv_obj_align(name, LV_ALIGN_LEFT_MID, 0, 0);
-
-        s_values[i] = lv_label_create(row);
-        lv_obj_set_style_text_color(s_values[i], lv_color_white(), 0);
-        lv_obj_align(s_values[i], LV_ALIGN_RIGHT_MID, 0, 0);
-
-        s_rows[i] = row;
+        s_rows[i] = widget_row(list, s_items[i].name, &s_values[i], on_row, LV_EVENT_CLICKED, (void *)(intptr_t)i);
         render_value(i);
     }
     select_row(0);
 
-    lv_obj_t *hint = lv_label_create(scr);
-    lv_label_set_text(hint, "Tap an item, turn the knob");
-    lv_obj_set_style_text_color(hint, theme_text_muted(), 0);
-    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -40);
-
     settings_on_change(on_settings_change);
 }
+
+const screen_def_t settings_screen = {
+    .name = "Settings",
+    .icon = LV_SYMBOL_SETTINGS,
+    .create = create,
+    .knob = knob,
+};
