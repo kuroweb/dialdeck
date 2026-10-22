@@ -8,9 +8,11 @@
 #include "settings_screen.h"
 #include "touchpad.h"
 
-// A touch starting farther than this from the center is on the edge ring.
-#define EDGE_RADIUS      (BOARD_LCD_H_RES / 2 - 36)
-// Horizontal travel needed for an edge touch to switch screens.
+// Like a phone's notification shade: the settings panel is pulled down from the top edge and
+// pushed back up from the bottom edge. Only those two edges are reserved, so a drag on the
+// touchpad that wanders to a side never switches screens.
+#define EDGE_BAND        52
+// Vertical travel needed to open or close the panel.
 #define SWIPE_MIN        50
 
 static lv_obj_t *s_screens[UI_SCREEN_COUNT];
@@ -19,13 +21,15 @@ static lv_obj_t *s_knob_label;
 static lv_obj_t *s_ble_label;
 
 static lv_point_t s_nav_start;
-static bool s_nav_edge;
 
-bool ui_is_edge(lv_point_t p)
+bool ui_is_pull_down_start(lv_point_t p)
 {
-    const int dx = p.x - BOARD_LCD_H_RES / 2;
-    const int dy = p.y - BOARD_LCD_V_RES / 2;
-    return dx * dx + dy * dy > EDGE_RADIUS * EDGE_RADIUS;
+    return p.y < EDGE_BAND;
+}
+
+static bool is_push_up_start(lv_point_t p)
+{
+    return p.y >= BOARD_LCD_V_RES - EDGE_BAND;
 }
 
 ui_screen_t ui_active(void)
@@ -46,19 +50,18 @@ static void on_nav(lv_event_t *e)
 
     if (lv_event_get_code(e) == LV_EVENT_PRESSED) {
         s_nav_start = p;
-        s_nav_edge = ui_is_edge(p);
         return;
     }
     // LV_EVENT_RELEASED
     const int dx = p.x - s_nav_start.x;
     const int dy = p.y - s_nav_start.y;
-    if (!s_nav_edge || abs(dx) < SWIPE_MIN || abs(dx) < abs(dy)) {
+    if (abs(dy) < SWIPE_MIN || abs(dy) < abs(dx)) {
         return;
     }
-    if (dx < 0) {
-        show((s_active + 1) % UI_SCREEN_COUNT, LV_SCREEN_LOAD_ANIM_MOVE_LEFT);
-    } else {
-        show((s_active + UI_SCREEN_COUNT - 1) % UI_SCREEN_COUNT, LV_SCREEN_LOAD_ANIM_MOVE_RIGHT);
+    if (s_active == UI_SCREEN_TOUCHPAD && dy > 0 && ui_is_pull_down_start(s_nav_start)) {
+        show(UI_SCREEN_SETTINGS, LV_SCREEN_LOAD_ANIM_MOVE_BOTTOM);
+    } else if (s_active == UI_SCREEN_SETTINGS && dy < 0 && is_push_up_start(s_nav_start)) {
+        show(UI_SCREEN_TOUCHPAD, LV_SCREEN_LOAD_ANIM_MOVE_TOP);
     }
 }
 
@@ -84,9 +87,21 @@ static void refresh_status(lv_timer_t *t)
     lv_label_set_text(s_ble_label, names[ble_hid_state()]);
 }
 
+void ui_add_handle(lv_obj_t *scr, lv_align_t align, int y)
+{
+    lv_obj_t *bar = lv_obj_create(scr);
+    lv_obj_remove_style_all(bar);
+    lv_obj_set_size(bar, 48, 5);
+    lv_obj_set_style_radius(bar, 3, 0);
+    lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(bar, lv_palette_darken(LV_PALETTE_GREY, 2), 0);
+    lv_obj_align(bar, align, 0, y);
+}
+
 static void touchpad_screen_create(lv_obj_t *scr)
 {
     touchpad_attach(scr);
+    ui_add_handle(scr, LV_ALIGN_TOP_MID, 14);
 
     lv_obj_t *title = lv_label_create(scr);
     lv_label_set_text(title, "DialDeck");

@@ -27,7 +27,7 @@ static lv_point_t s_last;
 static uint32_t s_start_ms;
 static uint32_t s_last_ms;
 static bool s_moving;
-static bool s_ignored;  // touch started on the edge ring: it belongs to screen navigation
+static bool s_ignored;  // touch started at the top edge: it may pull down the settings panel
 static float s_rem_x;   // sub-pixel remainder carried to the next step
 static float s_rem_y;
 
@@ -55,7 +55,7 @@ static void on_event(lv_event_t *e)
 
     const lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_PRESSED) {
-        s_ignored = ui_is_edge(p);
+        s_ignored = ui_is_pull_down_start(p);
     }
     if (s_ignored) {
         return;

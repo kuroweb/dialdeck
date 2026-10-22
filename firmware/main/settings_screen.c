@@ -4,6 +4,7 @@
 
 #include "display.h"
 #include "settings.h"
+#include "ui.h"
 
 typedef enum {
     FMT_X100,
@@ -132,5 +133,7 @@ void settings_screen_create(lv_obj_t *scr)
     lv_obj_t *hint = lv_label_create(scr);
     lv_label_set_text(hint, "Tap an item, turn the knob");
     lv_obj_set_style_text_color(hint, lv_palette_main(LV_PALETTE_GREY), 0);
-    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -40);
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -46);
+
+    ui_add_handle(scr, LV_ALIGN_BOTTOM_MID, -14);
 }
