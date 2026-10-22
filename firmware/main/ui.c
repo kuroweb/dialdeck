@@ -5,8 +5,8 @@
 #include "ble_hid.h"
 #include "board.h"
 #include "deck_screen.h"
-#include "knob.h"
 #include "settings_screen.h"
+#include "theme.h"
 #include "touchpad.h"
 
 // Like a phone's notification shade: the menu is pulled down from the top edge of any screen and
@@ -20,8 +20,9 @@
 static lv_obj_t *s_screens[UI_SCREEN_COUNT];
 static ui_screen_t s_active;
 static ui_screen_t s_before_menu;   // where pushing the menu up returns to
-static lv_obj_t *s_knob_label;
+static lv_obj_t *s_ble_pill;
 static lv_obj_t *s_ble_label;
+static lv_obj_t *s_menu_items[UI_SCREEN_COUNT];
 
 static lv_point_t s_nav_start;
 
@@ -46,9 +47,19 @@ static void show(ui_screen_t screen, lv_screen_load_anim_t anim)
     lv_screen_load_anim(s_screens[screen], anim, ANIM_MS, 0, false);
 }
 
+static void mark_menu_item(ui_screen_t current)
+{
+    for (int i = 0; i < UI_SCREEN_COUNT; i++) {
+        if (s_menu_items[i]) {
+            lv_obj_set_style_bg_color(s_menu_items[i], i == current ? theme_accent() : theme_button(), 0);
+        }
+    }
+}
+
 static void open_menu(void)
 {
     s_before_menu = s_active;
+    mark_menu_item(s_active);
     show(UI_SCREEN_MENU, LV_SCREEN_LOAD_ANIM_OVER_BOTTOM);
 }
 
@@ -97,40 +108,58 @@ static void add_handle(lv_obj_t *scr, lv_align_t align, int y)
     lv_obj_set_size(bar, 48, 5);
     lv_obj_set_style_radius(bar, 3, 0);
     lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(bar, lv_palette_darken(LV_PALETTE_GREY, 2), 0);
+    lv_obj_set_style_bg_color(bar, theme_button(), 0);
+    // Not clickable, so a swipe that starts on the bar reaches the screen and opens the menu.
+    lv_obj_set_clickable(bar, false);
     lv_obj_align(bar, align, 0, y);
 }
 
 static void refresh_status(lv_timer_t *t)
 {
     static const char *const names[] = {
-        [BLE_HID_STATE_STARTING] = "BLE starting",
-        [BLE_HID_STATE_ADVERTISING] = "BLE waiting",
-        [BLE_HID_STATE_CONNECTED] = "BLE connected",
+        [BLE_HID_STATE_STARTING] = LV_SYMBOL_BLUETOOTH "  Starting",
+        [BLE_HID_STATE_ADVERTISING] = LV_SYMBOL_BLUETOOTH "  Waiting",
+        [BLE_HID_STATE_CONNECTED] = LV_SYMBOL_BLUETOOTH "  Connected",
     };
-    lv_label_set_text_fmt(s_knob_label, "knob %d", knob_position());
-    lv_label_set_text(s_ble_label, names[ble_hid_state()]);
+    const ble_hid_state_t state = ble_hid_state();
+    lv_label_set_text(s_ble_label, names[state]);
+    lv_obj_set_style_bg_color(s_ble_pill, state == BLE_HID_STATE_CONNECTED ? theme_accent() : theme_button(), 0);
 }
 
 static void touchpad_screen_create(lv_obj_t *scr)
 {
     touchpad_attach(scr);
 
+    // Outline of the touch area, drawn like the deck's buttons. Touches pass through to the screen.
+    lv_obj_t *ring = lv_obj_create(scr);
+    lv_obj_remove_style_all(ring);
+    lv_obj_set_size(ring, 320, 320);
+    lv_obj_set_style_radius(ring, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(ring, 2, 0);
+    lv_obj_set_style_border_color(ring, theme_button_dim(), 0);
+    lv_obj_set_clickable(ring, false);
+    lv_obj_center(ring);
+
     lv_obj_t *title = lv_label_create(scr);
-    lv_label_set_text(title, "DialDeck");
-    lv_obj_set_style_text_color(title, lv_color_white(), 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
-    lv_obj_align(title, LV_ALIGN_CENTER, 0, -50);
+    lv_label_set_text(title, "Touchpad");
+    lv_obj_set_style_text_color(title, theme_text_muted(), 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_align(title, LV_ALIGN_CENTER, 0, -20);
 
-    s_knob_label = lv_label_create(scr);
-    lv_obj_set_style_text_color(s_knob_label, lv_palette_main(LV_PALETTE_AMBER), 0);
-    lv_obj_align(s_knob_label, LV_ALIGN_CENTER, 0, 0);
+    s_ble_pill = lv_obj_create(scr);
+    lv_obj_remove_style_all(s_ble_pill);
+    lv_obj_set_size(s_ble_pill, LV_SIZE_CONTENT, 32);
+    lv_obj_set_style_radius(s_ble_pill, 16, 0);
+    lv_obj_set_style_bg_opa(s_ble_pill, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_hor(s_ble_pill, 16, 0);
+    lv_obj_set_clickable(s_ble_pill, false);
+    lv_obj_align(s_ble_pill, LV_ALIGN_CENTER, 0, 22);
 
-    s_ble_label = lv_label_create(scr);
-    lv_obj_set_style_text_color(s_ble_label, lv_palette_main(LV_PALETTE_LIGHT_BLUE), 0);
-    lv_obj_align(s_ble_label, LV_ALIGN_CENTER, 0, 40);
+    s_ble_label = lv_label_create(s_ble_pill);
+    lv_obj_set_style_text_color(s_ble_label, lv_color_white(), 0);
+    lv_obj_center(s_ble_label);
 
-    lv_timer_create(refresh_status, 50, NULL);
+    lv_timer_create(refresh_status, 200, NULL);
     refresh_status(NULL);
 }
 
@@ -162,8 +191,9 @@ static void menu_screen_create(lv_obj_t *scr)
         lv_obj_t *btn = lv_button_create(list);
         lv_obj_set_size(btn, LV_PCT(100), 56);
         lv_obj_set_style_radius(btn, 28, 0);
-        lv_obj_set_style_bg_color(btn, lv_palette_darken(LV_PALETTE_BLUE_GREY, 2), 0);
+        lv_obj_set_style_bg_color(btn, theme_button(), 0);
         lv_obj_set_style_shadow_width(btn, 0, 0);
+        s_menu_items[items[i].screen] = btn;
         lv_obj_set_event_bubble(btn, true);
         lv_obj_add_event_cb(btn, on_menu_item, LV_EVENT_CLICKED, (void *)(intptr_t)items[i].screen);
 

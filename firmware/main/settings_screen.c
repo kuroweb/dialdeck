@@ -5,6 +5,7 @@
 #include "display.h"
 #include "esp_lvgl_port.h"
 #include "settings.h"
+#include "theme.h"
 
 typedef enum {
     FMT_X100,
@@ -61,9 +62,9 @@ static void render_value(int i)
 
 static void select_row(int i)
 {
-    lv_obj_set_style_bg_opa(s_rows[s_selected], LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(s_rows[s_selected], theme_button_dim(), 0);
     s_selected = i;
-    lv_obj_set_style_bg_opa(s_rows[s_selected], LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(s_rows[s_selected], theme_accent(), 0);
 }
 
 static void on_row(lv_event_t *e)
@@ -113,16 +114,18 @@ void settings_screen_create(lv_obj_t *scr)
     lv_obj_remove_style_all(list);
     lv_obj_set_size(list, 260, LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(list, 4, 0);
     lv_obj_set_event_bubble(list, true);
     lv_obj_align(list, LV_ALIGN_CENTER, 0, 10);
 
     for (int i = 0; i < ITEM_COUNT; i++) {
         lv_obj_t *row = lv_obj_create(list);
         lv_obj_remove_style_all(row);
-        lv_obj_set_size(row, LV_PCT(100), 34);
-        lv_obj_set_style_radius(row, 8, 0);
-        lv_obj_set_style_bg_color(row, lv_palette_darken(LV_PALETTE_BLUE, 3), 0);
-        lv_obj_set_style_pad_hor(row, 10, 0);
+        lv_obj_set_size(row, LV_PCT(100), 32);
+        lv_obj_set_style_radius(row, 16, 0);
+        lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(row, theme_button_dim(), 0);
+        lv_obj_set_style_pad_hor(row, 14, 0);
         lv_obj_set_clickable(row, true);
         lv_obj_set_event_bubble(row, true);
         lv_obj_add_event_cb(row, on_row, LV_EVENT_CLICKED, (void *)(intptr_t)i);
@@ -133,7 +136,7 @@ void settings_screen_create(lv_obj_t *scr)
         lv_obj_align(name, LV_ALIGN_LEFT_MID, 0, 0);
 
         s_values[i] = lv_label_create(row);
-        lv_obj_set_style_text_color(s_values[i], lv_palette_main(LV_PALETTE_AMBER), 0);
+        lv_obj_set_style_text_color(s_values[i], lv_color_white(), 0);
         lv_obj_align(s_values[i], LV_ALIGN_RIGHT_MID, 0, 0);
 
         s_rows[i] = row;
@@ -143,7 +146,7 @@ void settings_screen_create(lv_obj_t *scr)
 
     lv_obj_t *hint = lv_label_create(scr);
     lv_label_set_text(hint, "Tap an item, turn the knob");
-    lv_obj_set_style_text_color(hint, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_obj_set_style_text_color(hint, theme_text_muted(), 0);
     lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -40);
 
     settings_on_change(on_settings_change);

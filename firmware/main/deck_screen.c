@@ -5,6 +5,7 @@
 #include "ble_hid.h"
 #include "deck_config.h"
 #include "esp_lvgl_port.h"
+#include "theme.h"
 
 #define RING_COUNT    (DECK_SLOT_COUNT - 1)
 #define RING_RADIUS   112
@@ -54,10 +55,10 @@ void deck_screen_create(lv_obj_t *scr)
     const float step = 2 * (float)M_PI / RING_COUNT;
     for (int i = 0; i < RING_COUNT; i++) {
         const float a = step * (i + 0.5f);
-        lv_obj_t *btn = button_create(scr, i + 1, RING_BUTTON, lv_palette_darken(LV_PALETTE_BLUE_GREY, 2));
+        lv_obj_t *btn = button_create(scr, i + 1, RING_BUTTON, theme_button());
         lv_obj_align(btn, LV_ALIGN_CENTER, (int)lroundf(RING_RADIUS * sinf(a)), (int)lroundf(-RING_RADIUS * cosf(a)));
     }
-    lv_obj_t *center = button_create(scr, 0, CENTER_BUTTON, lv_palette_darken(LV_PALETTE_TEAL, 2));
+    lv_obj_t *center = button_create(scr, 0, CENTER_BUTTON, theme_accent());
     lv_obj_center(center);
 
     deck_config_on_change(on_config_change);
