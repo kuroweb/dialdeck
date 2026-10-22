@@ -3,6 +3,7 @@ import SwiftUI
 
 struct RootView: View {
     @ObservedObject var link: DeviceLink
+    @ObservedObject var herdr: HerdrBridge
 
     private let tabHeight: CGFloat = 540
 
@@ -11,6 +12,7 @@ struct RootView: View {
             HStack {
                 Text("DialDeck").font(.title2.bold())
                 Spacer()
+                HerdrBadge(state: herdr.state)
                 StatusBadge(state: link.state)
                 Button("Reload") { link.reload() }
                     .disabled(link.state != .ready)
@@ -62,5 +64,22 @@ private struct StatusBadge: View {
         Label(text, systemImage: "circle.fill")
             .font(.callout)
             .foregroundStyle(color)
+    }
+}
+
+/// Whether agents reach the device: herdr reachable, and how many agents it reports.
+private struct HerdrBadge: View {
+    let state: HerdrBridge.State
+
+    var body: some View {
+        let (text, color, help): (String, Color, String) = switch state {
+        case .starting: ("herdr", .secondary, "Looking for herdr")
+        case .running(let agents): ("herdr: \(agents)", .green, "Agents are sent to the device")
+        case .unavailable(let message): ("herdr", .orange, message)
+        }
+        Label(text, systemImage: "terminal")
+            .font(.callout)
+            .foregroundStyle(color)
+            .help(help)
     }
 }
