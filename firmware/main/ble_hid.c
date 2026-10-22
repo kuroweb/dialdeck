@@ -195,15 +195,25 @@ ble_hid_state_t ble_hid_state(void)
     return atomic_load(&s_state);
 }
 
-void ble_hid_scroll(int wheel)
+static int take_step(int *value)
 {
-    if (ble_hid_state() != BLE_HID_STATE_CONNECTED || wheel == 0) {
+    const int step = *value > 127 ? 127 : (*value < -127 ? -127 : *value);
+    *value -= step;
+    return step;
+}
+
+void ble_hid_mouse(int dx, int dy, int wheel, uint8_t buttons)
+{
+    if (ble_hid_state() != BLE_HID_STATE_CONNECTED) {
         return;
     }
-    while (wheel != 0) {
-        const int step = wheel > 127 ? 127 : (wheel < -127 ? -127 : wheel);
-        uint8_t report[4] = { 0, 0, 0, (uint8_t)(int8_t)step };
+    do {
+        uint8_t report[4] = {
+            buttons,
+            (uint8_t)(int8_t)take_step(&dx),
+            (uint8_t)(int8_t)take_step(&dy),
+            (uint8_t)(int8_t)take_step(&wheel),
+        };
         esp_hidd_dev_input_set(s_hid_dev, 0, REPORT_ID_MOUSE, report, sizeof(report));
-        wheel -= step;
-    }
+    } while (dx != 0 || dy != 0 || wheel != 0);
 }

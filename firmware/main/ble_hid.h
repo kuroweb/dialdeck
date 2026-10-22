@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 typedef enum {
     BLE_HID_STATE_STARTING,
     BLE_HID_STATE_ADVERTISING,
@@ -11,5 +13,8 @@ void ble_hid_init(void);
 
 ble_hid_state_t ble_hid_state(void);
 
-// Send a mouse wheel movement (positive = scroll up). Dropped while not connected.
-void ble_hid_scroll(int wheel);
+#define BLE_HID_BUTTON_LEFT  0x01
+
+// Send pointer movement, wheel (positive = scroll up) and the held buttons.
+// Large movements are split into several reports. Dropped while not connected.
+void ble_hid_mouse(int dx, int dy, int wheel, uint8_t buttons);
