@@ -25,6 +25,7 @@ static knob_pin_t s_pins[] = {
 };
 
 static atomic_int s_pending;   // detents not yet consumed by LVGL
+static atomic_int s_scroll;    // detents not yet sent as scroll
 static atomic_int s_position;
 
 static void knob_poll(void *arg)
@@ -39,6 +40,7 @@ static void knob_poll(void *arg)
         if (!pin->pressed && ++pin->low_polls >= KNOB_STABLE_POLLS) {
             pin->pressed = true;
             atomic_fetch_add(&s_pending, pin->dir);
+            atomic_fetch_add(&s_scroll, pin->dir);
             atomic_fetch_add(&s_position, pin->dir);
         }
     }
@@ -53,6 +55,11 @@ static void knob_read(lv_indev_t *indev, lv_indev_data_t *data)
 int knob_position(void)
 {
     return atomic_load(&s_position);
+}
+
+int knob_take_scroll(void)
+{
+    return atomic_exchange(&s_scroll, 0);
 }
 
 lv_indev_t *knob_init(void)
