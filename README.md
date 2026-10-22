@@ -23,7 +23,7 @@
 - ESP32-S3（rev v0.2）、PSRAM 8MB、フラッシュ 16MB
 - 1.8" 円形 360×360（ST77916, QSPI）、タッチ CST816、ロータリーノブ（押し込み不可）、LED リング（GPIO0）、スピーカー、マイク、microSD、バッテリー
 
-ピン配置と既知の注意点は `vendor/esphome-guition-jc3636k718c-va`（参照専用の submodule）と、そのスキル `.claude/skills/guition-jc3636k718c` を参照する。
+ピン配置と既知の注意点は `vendor/esphome-guition-jc3636k718c-va`（参照専用の submodule）と、そのスキル `.claude/skills/guition-jc3636k718c` を参照する。実機で確かめたことと、上流と違った点は [docs/hardware-notes.md](docs/hardware-notes.md) にある。
 
 ## 純正ファームウェアのバックアップ
 
