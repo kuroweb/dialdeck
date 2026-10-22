@@ -1,6 +1,10 @@
 # DialDeck
 
-BLE macro pad / dial mouse for Guition JC3636K718C (ESP32-S3), with herdr integration.
+丸型ノブディスプレイ Guition JC3636K718C（ESP32-S3）を、Mac 用の BLE 入力デバイスにするファームウェア。
+
+- Stream Deck のように、画面のボタンでショートカットを送る
+- ノブでスクロールし、画面をタッチパッドにしてマウスとして使う
+- herdr と連携し、エージェントの状態表示や操作をする
 
 ## 方針
 
@@ -12,7 +16,7 @@ BLE macro pad / dial mouse for Guition JC3636K718C (ESP32-S3), with herdr integr
 
 ## セットアップ
 
-開発環境の構築手順は [docs/setup.md](docs/setup.md) を参照する。
+リポジトリの取得（submodule を含む）から、開発環境の構築、ビルド、書き込みまでは [docs/setup.md](docs/setup.md) を参照する。
 
 ## ハードウェア
 
