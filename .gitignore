@@ -1,0 +1,12 @@
+# Stock firmware dumps (nvs may contain credentials)
+backup/
+
+# ESP-IDF
+build/
+managed_components/
+sdkconfig
+sdkconfig.old
+dependencies.lock
+
+# macOS
+.DS_Store
