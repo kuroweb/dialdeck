@@ -19,7 +19,23 @@ static settings_t s_settings = {
     .brightness = 100,
 };
 
+static const struct {
+    size_t offset;
+    int min;
+    int max;
+} s_ranges[] = {
+    { offsetof(settings_t, pointer_gain),     100, 500 },
+    { offsetof(settings_t, pointer_accel),    0,   50 },
+    { offsetof(settings_t, pointer_gain_max), 100, 1000 },
+    { offsetof(settings_t, scroll_step),      1,   5 },
+    { offsetof(settings_t, scroll_reverse),   0,   1 },
+    { offsetof(settings_t, brightness),       10,  100 },
+};
+#define RANGE_COUNT  (sizeof(s_ranges) / sizeof(s_ranges[0]))
+_Static_assert(RANGE_COUNT * sizeof(int32_t) == sizeof(settings_t), "every field needs a range");
+
 static esp_timer_handle_t s_save_timer;
+static void (*s_on_change)(void);
 
 static void save(void *arg)
 {
@@ -61,8 +77,41 @@ settings_t *settings(void)
     return &s_settings;
 }
 
+void settings_range(size_t offset, int *min, int *max)
+{
+    for (int i = 0; i < RANGE_COUNT; i++) {
+        if (s_ranges[i].offset == offset) {
+            *min = s_ranges[i].min;
+            *max = s_ranges[i].max;
+            return;
+        }
+    }
+    *min = *max = 0;
+}
+
 void settings_changed(void)
 {
     esp_timer_stop(s_save_timer);
     esp_timer_start_once(s_save_timer, SAVE_DELAY_US);
+}
+
+bool settings_replace(const settings_t *value)
+{
+    for (int i = 0; i < RANGE_COUNT; i++) {
+        const int32_t v = *(const int32_t *)((const char *)value + s_ranges[i].offset);
+        if (v < s_ranges[i].min || v > s_ranges[i].max) {
+            return false;
+        }
+    }
+    s_settings = *value;
+    settings_changed();
+    if (s_on_change) {
+        s_on_change();
+    }
+    return true;
+}
+
+void settings_on_change(void (*callback)(void))
+{
+    s_on_change = callback;
 }

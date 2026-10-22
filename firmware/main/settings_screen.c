@@ -3,6 +3,7 @@
 #include <stddef.h>
 
 #include "display.h"
+#include "esp_lvgl_port.h"
 #include "settings.h"
 
 typedef enum {
@@ -14,20 +15,18 @@ typedef enum {
 
 typedef struct {
     const char *name;
-    size_t offset;   // field in settings_t
-    int min;
-    int max;
+    size_t offset;   // field in settings_t; its range comes from settings_range()
     int step;
     item_format_t format;
 } item_t;
 
 static const item_t s_items[] = {
-    { "Pointer speed", offsetof(settings_t, pointer_gain),     100, 500,  25, FMT_X100 },
-    { "Acceleration",  offsetof(settings_t, pointer_accel),    0,   50,   5,  FMT_X100 },
-    { "Max speed",     offsetof(settings_t, pointer_gain_max), 100, 1000, 50, FMT_X100 },
-    { "Scroll step",   offsetof(settings_t, scroll_step),      1,   5,    1,  FMT_INT },
-    { "Scroll dir",    offsetof(settings_t, scroll_reverse),   0,   1,    1,  FMT_DIRECTION },
-    { "Brightness",    offsetof(settings_t, brightness),       10,  100,  10, FMT_PERCENT },
+    { "Pointer speed", offsetof(settings_t, pointer_gain),     25, FMT_X100 },
+    { "Acceleration",  offsetof(settings_t, pointer_accel),    5,  FMT_X100 },
+    { "Max speed",     offsetof(settings_t, pointer_gain_max), 50, FMT_X100 },
+    { "Scroll step",   offsetof(settings_t, scroll_step),      1,  FMT_INT },
+    { "Scroll dir",    offsetof(settings_t, scroll_reverse),   1,  FMT_DIRECTION },
+    { "Brightness",    offsetof(settings_t, brightness),       10, FMT_PERCENT },
 };
 #define ITEM_COUNT  (sizeof(s_items) / sizeof(s_items[0]))
 
@@ -35,15 +34,15 @@ static lv_obj_t *s_rows[ITEM_COUNT];
 static lv_obj_t *s_values[ITEM_COUNT];
 static int s_selected;
 
-static int *item_value(const item_t *item)
+static int32_t *item_value(const item_t *item)
 {
-    return (int *)((char *)settings() + item->offset);
+    return (int32_t *)((char *)settings() + item->offset);
 }
 
 static void render_value(int i)
 {
     const item_t *item = &s_items[i];
-    const int v = *item_value(item);
+    const int v = (int)*item_value(item);
     switch (item->format) {
     case FMT_X100:
         lv_label_set_text_fmt(s_values[i], "%d.%02d", v / 100, v % 100);
@@ -75,9 +74,11 @@ static void on_row(lv_event_t *e)
 void settings_screen_knob(int detents)
 {
     const item_t *item = &s_items[s_selected];
-    int *value = item_value(item);
+    int32_t *value = item_value(item);
+    int min, max;
+    settings_range(item->offset, &min, &max);
     int v = *value + detents * item->step;
-    v = v < item->min ? item->min : (v > item->max ? item->max : v);
+    v = v < min ? min : (v > max ? max : v);
     if (v == *value) {
         return;
     }
@@ -87,6 +88,17 @@ void settings_screen_knob(int detents)
     }
     render_value(s_selected);
     settings_changed();
+}
+
+// Runs on the NimBLE host task when the Mac app replaces the settings.
+static void on_settings_change(void)
+{
+    lvgl_port_lock(0);
+    for (int i = 0; i < ITEM_COUNT; i++) {
+        render_value(i);
+    }
+    lvgl_port_unlock();
+    display_set_brightness(settings()->brightness);
 }
 
 void settings_screen_create(lv_obj_t *scr)
@@ -133,4 +145,6 @@ void settings_screen_create(lv_obj_t *scr)
     lv_label_set_text(hint, "Tap an item, turn the knob");
     lv_obj_set_style_text_color(hint, lv_palette_main(LV_PALETTE_GREY), 0);
     lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -40);
+
+    settings_on_change(on_settings_change);
 }

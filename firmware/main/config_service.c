@@ -5,10 +5,11 @@
 #include "deck_config.h"
 #include "esp_log.h"
 #include "host/ble_hs.h"
+#include "settings.h"
 
 static const char *TAG = "config_service";
 
-#define PROTOCOL_VERSION  1
+#define PROTOCOL_VERSION  2
 
 // 98d3462c-2eb8-4022-ba87-4f253e72a24b and characteristics sharing its base.
 // NimBLE takes 128-bit UUIDs least significant byte first.
@@ -18,6 +19,7 @@ static const char *TAG = "config_service";
 static const ble_uuid128_t s_service_uuid = CONFIG_UUID(0x2c);
 static const ble_uuid128_t s_info_uuid = CONFIG_UUID(0x2d);
 static const ble_uuid128_t s_deck_uuid = CONFIG_UUID(0x2e);
+static const ble_uuid128_t s_settings_uuid = CONFIG_UUID(0x2f);
 
 // Info: [protocol version, slot count, label length].
 static int access_info(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
@@ -53,6 +55,26 @@ static int access_deck(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt
     return 0;
 }
 
+// Settings: read returns settings_t; write replaces it. Out-of-range values are refused.
+static int access_settings(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
+        return os_mbuf_append(ctxt->om, settings(), sizeof(settings_t)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+
+    settings_t value;
+    uint16_t len = 0;
+    if (OS_MBUF_PKTLEN(ctxt->om) != sizeof(value) ||
+        ble_hs_mbuf_to_flat(ctxt->om, &value, sizeof(value), &len) != 0) {
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+    if (!settings_replace(&value)) {
+        return BLE_ATT_ERR_VALUE_NOT_ALLOWED;
+    }
+    ESP_LOGI(TAG, "settings replaced");
+    return 0;
+}
+
 static const struct ble_gatt_svc_def s_services[] = {
     {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
@@ -67,6 +89,12 @@ static const struct ble_gatt_svc_def s_services[] = {
                 // Only a bonded, encrypted link may read or change assignments.
                 .uuid = &s_deck_uuid.u,
                 .access_cb = access_deck,
+                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC |
+                         BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
+            },
+            {
+                .uuid = &s_settings_uuid.u,
+                .access_cb = access_settings,
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC |
                          BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
             },
