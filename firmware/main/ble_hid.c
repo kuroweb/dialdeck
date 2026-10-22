@@ -273,3 +273,8 @@ void ble_hid_consumer(uint16_t usage)
     memset(report, 0, sizeof(report));
     esp_hidd_dev_input_set(s_hid_dev, 0, REPORT_ID_CONSUMER, report, sizeof(report));
 }
+
+void ble_hid_set_battery(int percent)
+{
+    esp_hidd_dev_battery_set(s_hid_dev, (uint8_t)percent);
+}

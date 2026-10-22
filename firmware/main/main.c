@@ -1,3 +1,4 @@
+#include "battery.h"
 #include "ble_hid.h"
 #include "deck_config.h"
 #include "display.h"
@@ -25,7 +26,13 @@ static void nvs_init(void)
 static void input_task(void *arg)
 {
     uint8_t buttons = 0;   // last buttons sent, so the wheel does not drop a held drag
+    int battery = -1;      // last battery level reported to the host
     while (1) {
+        if (battery_percent() >= 0 && battery_percent() != battery) {
+            battery = battery_percent();
+            ble_hid_set_battery(battery);
+        }
+
         // Send touchpad reports in order; consecutive moves with the same buttons go as one.
         touchpad_report_t r;
         bool have = touchpad_next(&r);
@@ -72,6 +79,7 @@ void app_main(void)
     display_init();
     display_set_brightness(settings()->brightness);
     knob_init();
+    battery_init();
     ble_hid_init();
 
     lvgl_port_lock(0);

@@ -28,6 +28,17 @@ CST816 のタッチドライバは、INT ピン（GPIO7）のために GPIO の 
 
 初期化時に `The 3Ah command has been used and will be overwritten by external initialization sequence` という警告が出る。シーケンスの中で色形式（3Ah）を RGB565 に設定しているためで、問題ない。
 
+## バッテリー
+
+電圧は GPIO6 に 10k/10k の分圧（1/2）で入っている。ADC の補正（curve fitting）と 2 倍で、電池の電圧として正しい値が出る。
+
+- USB を抜いた直後で 4.16 V だった
+- USB 接続中は 4.45〜4.48 V を読む。電池ではなく充電 IC の出力なので、この間は電圧から残量を出せない。電池だけでは 4.2 V を超えないので、4.3 V を超えたら外部から給電中と見なす（データ通信の無い充電器でも判定できる）
+- 充電中を示すピンは無い。Mac などの USB ホストにつながっているかは `usb_serial_jtag_is_connected()` で分かる
+- 充電 IC のリップルが平滑されずに ADC に入るので、1 回の測定で 64 回読んで平均し、さらに時間方向にも平均する
+
+残量の % は、電池だけで動いているときの電圧を一般的な Li-ion の放電曲線で換算している（`firmware/main/battery.c`）。この個体で使い切るまで測った曲線ではない。
+
 ## BLE HID
 
 HID のレポート仕様（`firmware/main/ble_hid.c` の report map）を変えると、ペアリング済みの Mac は前の構成を覚えたままになり、追加したレポートが届かない。Mac の Bluetooth 設定で DialDeck を削除し、ペアリングし直す。

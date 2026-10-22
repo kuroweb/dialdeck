@@ -38,3 +38,7 @@ void ble_hid_key(uint8_t modifiers, uint8_t key);
 
 // Press and release one consumer control (media key).
 void ble_hid_consumer(uint16_t usage);
+
+// Report the battery level (0-100) through the Battery Service; macOS shows it in its
+// Bluetooth menu.
+void ble_hid_set_battery(int percent);

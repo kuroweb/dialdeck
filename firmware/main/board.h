@@ -22,3 +22,7 @@
 // Not quadrature: each detent pulses one pin LOW (left -> A, right -> B).
 #define BOARD_KNOB_LEFT        2
 #define BOARD_KNOB_RIGHT       1
+
+// Battery voltage through a 10k/10k divider.
+#define BOARD_BATTERY_ADC      6
+#define BOARD_BATTERY_DIVIDER  2
