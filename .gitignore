@@ -1,6 +1,10 @@
 # Stock firmware dumps (nvs may contain credentials)
 backup/
 
+# Upstream clones (see references/README.md)
+references/*
+!references/README.md
+
 # ESP-IDF
 build/
 managed_components/

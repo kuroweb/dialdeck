@@ -16,14 +16,14 @@
 
 ## セットアップ
 
-リポジトリの取得（submodule を含む）から、開発環境の構築、ファームのビルドと書き込み、Mac アプリのインストールまでは [docs/setup.md](docs/setup.md) を参照する。
+リポジトリの取得から、開発環境の構築、ファームのビルドと書き込み、Mac アプリのインストールまでは [docs/setup.md](docs/setup.md) を参照する。
 
 ## ハードウェア
 
 - ESP32-S3（rev v0.2）、PSRAM 8MB、フラッシュ 16MB
 - 1.8" 円形 360×360（ST77916, QSPI）、タッチ CST816、ロータリーノブ（押し込み不可）、LED リング（GPIO0）、スピーカー、マイク、microSD、バッテリー
 
-ピン配置と既知の注意点は `vendor/esphome-guition-jc3636k718c-va`（参照専用の submodule）と、そのスキル `.claude/skills/guition-jc3636k718c` を参照する。実機で確かめたことと、上流と違った点は [docs/hardware-notes.md](docs/hardware-notes.md) にある。
+ピン配置と既知の注意点は `.claude/skills/guition-jc3636k718c` を参照する。出典リポジトリの取得と、そこから取り込んだものは [references/README.md](references/README.md)。実機で確かめたことと、上流と違った点は [docs/hardware-notes.md](docs/hardware-notes.md) にある。
 
 ## 純正ファームウェアのバックアップ
 

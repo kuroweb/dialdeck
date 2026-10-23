@@ -1,6 +1,6 @@
 # ハードウェアの注意点
 
-実機で確かめたこと。ピン配置は `firmware/main/board.h`、上流の知見は `.claude/skills/guition-jc3636k718c` にある。ここには、上流に無いことと、上流と違ったことを書く。
+実機で確かめたこと。ピン配置は `firmware/main/board.h`、上流の知見は `.claude/skills/guition-jc3636k718c` にある。出典リポジトリの置き場所は [references/README.md](../references/README.md)。ここには、上流に無いことと、上流と違ったことを書く。
 
 ## ノブ
 

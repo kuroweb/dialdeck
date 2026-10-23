@@ -6,20 +6,20 @@ ESP-IDF は公式インストーラー EIM（ESP-IDF Installation Manager）で�
 
 ## 1. リポジトリを取得する
 
-ハードウェア情報の参照元として、上流リポジトリ（[esphome-guition-jc3636k718c-va](https://github.com/MichalZaniewicz/esphome-guition-jc3636k718c-va)）を submodule で `vendor/` に入れている。submodule ごと取得する。
-
 ```
-git clone --recurse-submodules git@github.com:kuroweb/dialdeck.git
+git clone git@github.com:kuroweb/dialdeck.git
 cd dialdeck
 ```
 
-`--recurse-submodules` を付けずに clone した場合は、後から取得する。
+ハードウェアの出典は、リポジトリルートの `references/` に clone する。何を取り込んであるかは [references/README.md](../references/README.md)。
 
 ```
-git submodule update --init
+git clone --branch v2.2.12 https://github.com/MichalZaniewicz/esphome-guition-jc3636k718c-va.git references/esphome-guition-jc3636k718c-va
 ```
 
-`.claude/skills/guition-jc3636k718c` は submodule 内のスキルへのシンボリックリンクなので、submodule が無いと中身が空になる。
+v2.2.12 は annotated tag なので、clone 時に `is not a commit` と出る。その後の checkout 先が `8ffed08013312bf52d72bb2bf78dc208abf8db34` なら、取り込んだ版と同じ。
+
+`.claude/skills/guition-jc3636k718c` はリポジトリ内のファイルなので、この clone が無くても読める。clone は、出典の YAML やピン配置を追うときに使う。clone した中身は git に入れない。
 
 ## 2. Python を用意する
 

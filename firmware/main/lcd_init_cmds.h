@@ -1,4 +1,4 @@
-// Generated from vendor/esphome-guition-jc3636k718c-va/base/core.yaml (manufacturer demo JC3636K718_knob_EN).
+// Generated from esphome-guition-jc3636k718c-va v2.2.12 base/core.yaml (manufacturer demo JC3636K718_knob_EN).
 #pragma once
 
 #include "esp_lcd_st77916.h"
