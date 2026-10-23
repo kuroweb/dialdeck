@@ -28,7 +28,7 @@ static const item_t s_items[] = {
     { "Max speed",     offsetof(settings_t, pointer_gain_max), 50, FMT_X100 },
     { "Scroll step",   offsetof(settings_t, scroll_step),      1,  FMT_INT },
     { "Scroll dir",    offsetof(settings_t, scroll_reverse),   1,  FMT_DIRECTION },
-    { "Brightness",    offsetof(settings_t, brightness),       10, FMT_PERCENT },
+    { "Brightness",    offsetof(settings_t, brightness),       1,  FMT_PERCENT },
 };
 #define ITEM_COUNT  (sizeof(s_items) / sizeof(s_items[0]))
 

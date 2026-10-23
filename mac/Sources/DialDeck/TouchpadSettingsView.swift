@@ -85,7 +85,7 @@ private struct PercentSlider: View {
             HStack {
                 Slider(value: Binding(get: { Double(value) }, set: { value = Int32($0) }),
                        in: Double(range.lowerBound)...Double(range.upperBound),
-                       step: 10) { editing in
+                       step: 1) { editing in
                     if !editing { commit() }
                 }
                 Text("\(value)%")

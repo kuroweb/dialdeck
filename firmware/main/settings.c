@@ -29,7 +29,7 @@ static const struct {
     { offsetof(settings_t, pointer_gain_max), 100, 1000 },
     { offsetof(settings_t, scroll_step),      1,   5 },
     { offsetof(settings_t, scroll_reverse),   0,   1 },
-    { offsetof(settings_t, brightness),       10,  100 },
+    { offsetof(settings_t, brightness),       1,   100 },
 };
 #define RANGE_COUNT  (sizeof(s_ranges) / sizeof(s_ranges[0]))
 _Static_assert(RANGE_COUNT * sizeof(int32_t) == sizeof(settings_t), "every field needs a range");

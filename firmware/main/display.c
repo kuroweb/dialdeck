@@ -42,6 +42,13 @@ static void backlight_init(void)
 
 void display_set_brightness(int percent)
 {
+    // Linear duty: the LED current (the battery load this setting can cut) tracks the
+    // percentage. 1% is about 10 counts of 1023, still lit, so the UI stays usable.
+    if (percent < 1) {
+        percent = 1;
+    } else if (percent > 100) {
+        percent = 100;
+    }
     ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, BL_DUTY_MAX * percent / 100);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
 }

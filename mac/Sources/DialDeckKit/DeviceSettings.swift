@@ -17,7 +17,7 @@ public struct DeviceSettings: Equatable, Sendable {
     public static let pointerAccelRange: ClosedRange<Int32> = 0...50
     public static let pointerGainMaxRange: ClosedRange<Int32> = 100...1000
     public static let scrollStepRange: ClosedRange<Int32> = 1...5
-    public static let brightnessRange: ClosedRange<Int32> = 10...100
+    public static let brightnessRange: ClosedRange<Int32> = 1...100
 
     public init?(wire: Data) {
         guard wire.count == Self.wireSize else { return nil }
