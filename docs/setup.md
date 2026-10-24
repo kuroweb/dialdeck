@@ -75,7 +75,7 @@ cd firmware
 idf.py build
 ```
 
-初回は依存コンポーネント（LVGL、ST77916 ドライバなど）を `firmware/managed_components/` に取得する。
+初回は依存コンポーネント（LVGL、ST77916 ドライバなど）を `firmware/managed_components/` に取得する。同じ build が `firmware/build/compile_commands.json` を作る。Cursor が C の警告を出すのに要る。入れ方は [editor.md](editor.md)。
 
 ## 8. 書き込む
 

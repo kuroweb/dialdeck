@@ -1,0 +1,29 @@
+{
+  "clangd.path": "/usr/bin/clangd",
+  "clangd.arguments": [
+    "--query-driver=${userHome}/.espressif/tools/xtensa-esp-elf/*/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc",
+    "--header-insertion=never"
+  ],
+  "clangd.checkUpdates": false,
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "swift.sourcekit-lsp.supported-languages": ["swift"],
+  "[c]": {
+    "editor.maxTokenizationLineLength": 2000
+  },
+  "files.watcherExclude": {
+    "**/firmware/build/**": true,
+    "**/firmware/managed_components/**": true,
+    "**/mac/.build/**": true,
+    "**/mac/build/**": true,
+    "**/backup/**": true
+  },
+  "search.exclude": {
+    "**/firmware/build": true,
+    "**/firmware/managed_components": true,
+    "**/firmware/main/fonts/font_ja_16.c": true,
+    "**/mac/.build": true,
+    "**/mac/build": true,
+    "**/backup": true,
+    "**/references": true
+  }
+}

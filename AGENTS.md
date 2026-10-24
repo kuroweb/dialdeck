@@ -1,12 +1,13 @@
 # AGENTS.md
 
-DialDeck の作業メモ。何を作っているかは [README.md](README.md)、手順は [docs/](docs/)。ここには、コードを触るときに外してはいけないことを書く。
+DialDeck の作業メモ。何を作っているかと技術スタックは [README.md](README.md)、ファイルの対応は [docs/architecture.md](docs/architecture.md)、Cursor の診断は [docs/editor.md](docs/editor.md)。ここには、コードを触るときに外してはいけないことを書く。
 
 ## 構成
 
 - `firmware/` は ESP-IDF。アプリは `firmware/main/`。画面は `screen_def_t`（`screen.h`）で、切り替えは `ui.c`。
-- `mac/` は Swift Package。`DialDeckKit` が BLE と herdr、`DialDeck` がメニューバーアプリ。ビルドは `mac/scripts/build-app.sh`。Xcode のプロジェクトは無い。
-- `docs/` は日本語の手順、実機で確かめたこと、GATT の形式。
+- `mac/` は Swift Package。`DialDeckKit` が BLE と herdr、`DialDeck` がウィンドウアプリ。ビルドは `mac/scripts/build-app.sh`。Xcode のプロジェクトは無い。
+- `docs/` は日本語の手順、構成、Cursor の設定、実機で確かめたこと、GATT の形式。
+- `.clangd` と `.vscode/` は、診断を `firmware/main` の手書きと `mac/` の Swift に限る。生成フォントや ESP-IDF の警告を出すために広げない。説明は [docs/editor.md](docs/editor.md)。
 - `.claude/skills/guition-jc3636k718c` は上流 v2.2.12 のスキルをそのまま置いたもの。DialDeck 側の差分は書かない。
 - `references/` は出典の clone 先。中身は git に入れない。対応は [references/README.md](references/README.md)。
 - `backup/` は純正ファームの吸い出し。nvs に認証情報が入り得る。git に入れない。
@@ -16,6 +17,7 @@ DialDeck の作業メモ。何を作っているかは [README.md](README.md)、
 - ピン、液晶、ノブ、タッチ、バッテリーは `firmware/main/board.h`、スキル、[docs/hardware-notes.md](docs/hardware-notes.md)。スキルは ESPHome 向けの上流の知見で、こちらの実機と違ったことは hardware-notes に書く。
 - GATT は [docs/config-protocol.md](docs/config-protocol.md)。ファームは `firmware/main/config_service.c`、Mac は `mac/Sources/DialDeckKit/DeviceLink.swift`。
 - セットアップと書き込みは [docs/setup.md](docs/setup.md)。初めて書き込む前のバックアップは [docs/stock-firmware-backup.md](docs/stock-firmware-backup.md)。
+- エディタの警告は [docs/editor.md](docs/editor.md)。`firmware/build`、`managed_components`、`font_ja_16.c` に出る診断は直さない。
 
 ## 守ること
 

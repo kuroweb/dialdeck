@@ -1,22 +1,37 @@
 # DialDeck
 
-丸型ノブディスプレイ Guition JC3636K718C（ESP32-S3）を、Mac 用の BLE 入力デバイスにするファームウェア。
+丸型ノブディスプレイ Guition JC3636K718C（ESP32-S3）を、Mac 用の BLE 入力デバイスにする。
 
 - Stream Deck のように、画面のボタンでショートカットを送る
 - ノブでスクロールし、画面をタッチパッドにしてマウスとして使う
 - herdr と連携し、エージェントの状態表示や操作をする
 
-## 方針
+動くものは二つ。デバイスのファームウェアと、Mac のウィンドウアプリ。ファイルの対応は [docs/architecture.md](docs/architecture.md)。
 
-- 接続は BLE のみ。Wi-Fi は使わない
-- BLE HID: キーボードショートカット、マウス、スクロール、メディアキー
-- BLE 独自 GATT: Mac 側常駐プログラム（Swift / CoreBluetooth）と双方向通信し、herdr と連携する。時刻も Mac から送る
-- USB: 書き込み、ログ、充電。OTA は使わない
-- ファームウェアは ESP-IDF（NimBLE、LVGL、`esp_lcd_st77916`）
+## 技術スタック
 
-## セットアップ
+| | 使うもの | 置いてある場所 |
+| --- | --- | --- |
+| ファームウェア | ESP-IDF v6.1、NimBLE、LVGL 9、`esp_lcd_st77916` | `firmware/`。アプリは `firmware/main` |
+| Mac アプリ | Swift 6.0 の Package、macOS 14、CoreBluetooth、SwiftUI | `mac/`。Xcode のプロジェクトは無い |
+| デバイスとの接続 | BLE HID（キーボード、マウス、メディアキー）と、独自 GATT | [docs/config-protocol.md](docs/config-protocol.md) |
+| herdr | Mac アプリだけがソケットを開く。デバイスは GATT 経由で操作を頼む | `mac/Sources/DialDeckKit/HerdrBridge.swift` |
+| エディタ | Cursor。C は Apple clangd、Swift は SourceKit-LSP | [docs/editor.md](docs/editor.md) |
 
-リポジトリの取得から、開発環境の構築、ファームのビルドと書き込み、Mac アプリのインストールまでは [docs/setup.md](docs/setup.md) を参照する。
+無線は BLE だけ。Wi-Fi と OTA は使わない。USB は書き込み、ログ、充電。
+
+## ドキュメント
+
+| 文書 | 内容 |
+| --- | --- |
+| [docs/setup.md](docs/setup.md) | リポジトリの取得、ESP-IDF、ビルド、書き込み、Mac アプリ |
+| [docs/architecture.md](docs/architecture.md) | ファームと Mac アプリの対応、BLE で何が通るか |
+| [docs/editor.md](docs/editor.md) | Cursor に何を入れ、どの警告を見るか |
+| [docs/config-protocol.md](docs/config-protocol.md) | GATT のバイト列 |
+| [docs/hardware-notes.md](docs/hardware-notes.md) | 実機で確かめたこと |
+| [docs/stock-firmware-backup.md](docs/stock-firmware-backup.md) | 純正ファームの吸い出しと書き戻し |
+| [references/README.md](references/README.md) | 出典リポジトリ。ビルドには使わない |
+| [AGENTS.md](AGENTS.md) | コードを触るときに外さないこと |
 
 ## ハードウェア
 

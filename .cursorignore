@@ -1,0 +1,8 @@
+firmware/build/
+firmware/managed_components/
+firmware/main/fonts/font_ja_16.c
+mac/.build/
+mac/build/
+backup/
+references/**
+!references/README.md
