@@ -5,38 +5,65 @@
 #include "board.h"
 #include "driver/gpio.h"
 #include "esp_lvgl_port.h"
-#include "esp_timer.h"
+#include "esp_rom_sys.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
 
-// Each detent pulls one pin LOW for at least ~4 ms. Edge interrupts also catch sub-ms glitches
-// on the other pin, so sample instead and count a pulse only once it has stayed LOW this long.
-#define KNOB_POLL_US       1000
-#define KNOB_STABLE_POLLS  2
+// Each detent pulls one pin LOW for at least ~4 ms. Confirm the edge after 2 ms to reject glitches.
+#define KNOB_DEBOUNCE_US   2000
+#define KNOB_EVENT_COUNT   16
 
 typedef struct {
     int gpio;
     int dir;
-    int low_polls;
+    int index;
     bool pressed;
 } knob_pin_t;
 
 static knob_pin_t s_pins[] = {
-    { .gpio = BOARD_KNOB_LEFT, .dir = -1 },
-    { .gpio = BOARD_KNOB_RIGHT, .dir = 1 },
+    { .gpio = BOARD_KNOB_LEFT, .dir = -1, .index = 0 },
+    { .gpio = BOARD_KNOB_RIGHT, .dir = 1, .index = 1 },
 };
 
+typedef struct {
+    int index;
+    int level;
+} knob_event_t;
+
+static QueueHandle_t s_events;
 static atomic_int s_pending;   // detents not yet consumed by LVGL
 static atomic_int s_scroll;    // detents not yet sent as scroll
 
-static void knob_poll(void *arg)
+static void knob_isr(void *arg)
 {
-    for (size_t i = 0; i < sizeof(s_pins) / sizeof(s_pins[0]); i++) {
-        knob_pin_t *pin = &s_pins[i];
-        if (gpio_get_level(pin->gpio)) {
-            pin->low_polls = 0;
+    const knob_pin_t *pin = arg;
+    const knob_event_t event = { .index = pin->index, .level = gpio_get_level(pin->gpio) };
+    BaseType_t higher_priority_task_woken = pdFALSE;
+    xQueueSendFromISR(s_events, &event, &higher_priority_task_woken);
+    if (higher_priority_task_woken) {
+        portYIELD_FROM_ISR();
+    }
+}
+
+static void knob_event_task(void *arg)
+{
+    knob_event_t event;
+    while (1) {
+        if (xQueueReceive(s_events, &event, portMAX_DELAY) != pdTRUE) {
+            continue;
+        }
+
+        knob_pin_t *pin = &s_pins[event.index];
+        if (event.level) {
             pin->pressed = false;
             continue;
         }
-        if (!pin->pressed && ++pin->low_polls >= KNOB_STABLE_POLLS) {
+        if (pin->pressed) {
+            continue;
+        }
+
+        esp_rom_delay_us(KNOB_DEBOUNCE_US);
+        if (gpio_get_level(pin->gpio) == 0) {
             pin->pressed = true;
             atomic_fetch_add(&s_pending, pin->dir);
             atomic_fetch_add(&s_scroll, pin->dir);
@@ -61,16 +88,18 @@ lv_indev_t *knob_init(void)
         .pin_bit_mask = (1ULL << BOARD_KNOB_LEFT) | (1ULL << BOARD_KNOB_RIGHT),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
+        .intr_type = GPIO_INTR_DISABLE,
     };
     ESP_ERROR_CHECK(gpio_config(&io));
 
-    const esp_timer_create_args_t timer_args = {
-        .callback = knob_poll,
-        .name = "knob",
-    };
-    esp_timer_handle_t timer;
-    ESP_ERROR_CHECK(esp_timer_create(&timer_args, &timer));
-    ESP_ERROR_CHECK(esp_timer_start_periodic(timer, KNOB_POLL_US));
+    s_events = xQueueCreate(KNOB_EVENT_COUNT, sizeof(knob_event_t));
+    configASSERT(s_events != NULL);
+    configASSERT(xTaskCreate(knob_event_task, "knob", 2048, NULL, 5, NULL) == pdPASS);
+    for (size_t i = 0; i < sizeof(s_pins) / sizeof(s_pins[0]); i++) {
+        ESP_ERROR_CHECK(gpio_isr_handler_add(s_pins[i].gpio, knob_isr, &s_pins[i]));
+    }
+    ESP_ERROR_CHECK(gpio_set_intr_type(BOARD_KNOB_LEFT, GPIO_INTR_ANYEDGE));
+    ESP_ERROR_CHECK(gpio_set_intr_type(BOARD_KNOB_RIGHT, GPIO_INTR_ANYEDGE));
 
     lvgl_port_lock(0);
     lv_indev_t *indev = lv_indev_create();
