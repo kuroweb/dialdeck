@@ -36,9 +36,9 @@
 static const screen_def_t menu_screen;
 
 static const screen_def_t *const s_defs[UI_SCREEN_COUNT] = {
+    [UI_SCREEN_AGENTS] = &agents_screen,
     [UI_SCREEN_TOUCHPAD] = &touchpad_screen,
     [UI_SCREEN_DECK] = &deck_screen,
-    [UI_SCREEN_AGENTS] = &agents_screen,
     [UI_SCREEN_SETTINGS] = &settings_screen,
     [UI_SCREEN_AGENT] = &agent_screen,
     [UI_SCREEN_MENU] = &menu_screen,
