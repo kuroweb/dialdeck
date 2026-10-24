@@ -16,5 +16,4 @@ extern const screen_def_t touchpad_screen;
 extern const screen_def_t deck_screen;
 extern const screen_def_t agents_screen;
 extern const screen_def_t agent_screen;   // one agent, opened from agents_screen
-extern const screen_def_t hosts_screen;
 extern const screen_def_t settings_screen;

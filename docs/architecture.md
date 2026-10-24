@@ -24,7 +24,7 @@ ESP-IDF v6.1。アプリは `firmware/main`。画面は `screen_def_t`（`screen
 | `ble_hid.c` | BLE HID と、今話すホストの切り替え |
 | `host_slots.c` | ペアリングしたホスト。最大 3 |
 | `deck_config.c`, `deck_screen.c` | ボタン 9 個。中央と、上から時計回り |
-| `settings.c`, `settings_screen.c` | タッチパッド、スクロール、明るさ、画面消灯までの時間。NVS に保存 |
+| `settings.c`, `settings_screen.c` | タッチパッド、スクロール、明るさ、画面消灯までの時間、Bluetooth ホスト切り替えとペアリング |
 | `config_service.c` | GATT |
 | `agents.c`, `agents_screen.c` | Mac から受け取った agent の表示と操作 |
 | `battery.c` | 電池残量 |

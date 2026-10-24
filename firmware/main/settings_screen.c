@@ -1,9 +1,10 @@
-// Touchpad, knob and display settings. Tap a row to select it, turn the knob to change it; the
-// selected row shows arrows around its value.
+// Device settings grouped by function. Tap a value row to select it, then turn the knob to change it.
 #include <stddef.h>
 
+#include "ble_hid.h"
 #include "display.h"
 #include "esp_lvgl_port.h"
+#include "host_slots.h"
 #include "screen.h"
 #include "settings.h"
 #include "theme.h"
@@ -13,10 +14,11 @@ typedef enum {
     GROUP_POINTER,
     GROUP_SCROLL,
     GROUP_DISPLAY,
+    GROUP_BLUETOOTH,
     GROUP_COUNT,
 } setting_group_t;
 
-static const char *const s_group_names[GROUP_COUNT] = { "Pointer", "Scroll", "Display" };
+static const char *const s_group_names[GROUP_COUNT] = { "Pointer", "Scroll", "Display", "BT" };
 
 typedef enum {
     FMT_X100,
@@ -51,7 +53,11 @@ static lv_obj_t *s_rows[ITEM_COUNT];
 static lv_obj_t *s_values[ITEM_COUNT];
 static lv_obj_t *s_group_buttons[GROUP_COUNT];
 static lv_obj_t *s_list;
+static lv_obj_t *s_host_rows[HOST_SLOT_COUNT];
+static lv_obj_t *s_host_states[HOST_SLOT_COUNT];
+static lv_obj_t *s_hint;
 static int s_selected;
+static setting_group_t s_group;
 
 static int32_t *item_value(const item_t *item)
 {
@@ -124,8 +130,13 @@ static void on_row(lv_event_t *e)
     select_row((int)(intptr_t)lv_event_get_user_data(e));
 }
 
+static void refresh_hosts(void);
+static void on_host_tap(lv_event_t *e);
+static void on_host_hold(lv_event_t *e);
+
 static void show_group(setting_group_t group)
 {
+    s_group = group;
     int first = -1;
     for (int i = 0; i < ITEM_COUNT; i++) {
         s_rows[i] = NULL;
@@ -134,13 +145,31 @@ static void show_group(setting_group_t group)
             first = i;
         }
     }
-    s_selected = first;
+    s_selected = group == GROUP_BLUETOOTH ? -1 : first;
+    for (int i = 0; i < HOST_SLOT_COUNT; i++) {
+        s_host_rows[i] = NULL;
+        s_host_states[i] = NULL;
+    }
 
     for (int i = 0; i < GROUP_COUNT; i++) {
         lv_obj_set_style_bg_color(s_group_buttons[i], i == group ? theme_accent() : theme_button(), 0);
     }
 
     lv_obj_clean(s_list);
+    if (group == GROUP_BLUETOOTH) {
+        lv_label_set_text(s_hint, "Tap to switch, hold to pair again");
+        for (int i = 0; i < HOST_SLOT_COUNT; i++) {
+            char label[24];
+            lv_snprintf(label, sizeof(label), LV_SYMBOL_BLUETOOTH "  Host %d", i + 1);
+            s_host_rows[i] = widget_row(s_list, label, &s_host_states[i], on_host_tap,
+                                        LV_EVENT_SHORT_CLICKED, (void *)(intptr_t)i);
+            lv_obj_add_event_cb(s_host_rows[i], on_host_hold, LV_EVENT_LONG_PRESSED, (void *)(intptr_t)i);
+        }
+        refresh_hosts();
+        return;
+    }
+
+    lv_label_set_text(s_hint, "Tap a row, turn knob to change");
     for (int i = 0; i < ITEM_COUNT; i++) {
         if (s_items[i].group != group) {
             continue;
@@ -157,8 +186,45 @@ static void on_group(lv_event_t *e)
     show_group((setting_group_t)(intptr_t)lv_event_get_user_data(e));
 }
 
+static void refresh_hosts(void)
+{
+    const int active = ble_hid_host();
+    const ble_hid_state_t state = ble_hid_state();
+    for (int i = 0; i < HOST_SLOT_COUNT; i++) {
+        if (s_host_rows[i] == NULL) {
+            continue;
+        }
+        const char *text = "Empty";
+        if (i == active) {
+            text = state == BLE_HID_STATE_CONNECTED ? "Connected"
+                   : state == BLE_HID_STATE_PAIRING ? "Pairing..."
+                   : "Waiting";
+        } else if (ble_hid_host_paired(i)) {
+            text = "Paired";
+        }
+        lv_label_set_text(s_host_states[i], text);
+        widget_row_set_selected(s_host_rows[i], i == active);
+    }
+}
+
+static void on_host_tap(lv_event_t *e)
+{
+    const int slot = (int)(intptr_t)lv_event_get_user_data(e);
+    if (slot != ble_hid_host() || ble_hid_state() != BLE_HID_STATE_CONNECTED) {
+        ble_hid_select_host(slot);
+    }
+}
+
+static void on_host_hold(lv_event_t *e)
+{
+    ble_hid_pair_host((int)(intptr_t)lv_event_get_user_data(e));
+}
+
 static void knob(int detents)
 {
+    if (s_selected < 0) {
+        return;
+    }
     const item_t *item = &s_items[s_selected];
     if (item->format == FMT_TIMEOUT) {
         const int count = sizeof(s_timeout_values) / sizeof(s_timeout_values[0]);
@@ -197,23 +263,47 @@ static void on_settings_change(void)
     for (int i = 0; i < ITEM_COUNT; i++) {
         render_value(i);
     }
+    refresh_hosts();
     lvgl_port_unlock();
     display_set_brightness(settings()->brightness);
     display_set_idle_timeout(settings_display_timeout());
 }
 
+static void tick(void)
+{
+    if (s_group == GROUP_BLUETOOTH) {
+        refresh_hosts();
+    }
+}
+
 static void create(lv_obj_t *scr)
 {
     widget_title(scr, "Settings");
-    lv_obj_t *group_row = widget_button_row(scr, -82);
+    lv_obj_t *group_row = lv_obj_create(scr);
+    lv_obj_remove_style_all(group_row);
+    lv_obj_set_size(group_row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(group_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(group_row, 5, 0);
+    lv_obj_set_event_bubble(group_row, true);
+    lv_obj_align(group_row, LV_ALIGN_CENTER, 0, -82);
     for (int i = 0; i < GROUP_COUNT; i++) {
-        s_group_buttons[i] = widget_button(group_row, s_group_names[i], false, on_group, (void *)(intptr_t)i);
+        s_group_buttons[i] = lv_button_create(group_row);
+        lv_obj_set_size(s_group_buttons[i], 70, 40);
+        lv_obj_set_style_radius(s_group_buttons[i], 20, 0);
+        lv_obj_set_style_bg_color(s_group_buttons[i], theme_button(), 0);
+        lv_obj_set_style_shadow_width(s_group_buttons[i], 0, 0);
+        lv_obj_set_event_bubble(s_group_buttons[i], true);
+        lv_obj_add_event_cb(s_group_buttons[i], on_group, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        lv_obj_t *label = lv_label_create(s_group_buttons[i]);
+        lv_label_set_text(label, s_group_names[i]);
+        lv_obj_set_style_text_font(label, THEME_FONT_BODY, 0);
+        lv_obj_center(label);
     }
 
     s_list = widget_list(scr, 24);
     lv_obj_set_width(s_list, 250);
     lv_obj_set_scrollable(s_list, false);
-    widget_hint(scr, "Tap a row, turn knob to change");
+    s_hint = widget_hint(scr, "Tap a row, turn knob to change");
     show_group(GROUP_POINTER);
 
     settings_on_change(on_settings_change);
@@ -224,4 +314,5 @@ const screen_def_t settings_screen = {
     .icon = LV_SYMBOL_SETTINGS,
     .create = create,
     .knob = knob,
+    .tick = tick,
 };
