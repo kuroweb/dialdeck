@@ -32,5 +32,9 @@ void settings_changed(void);
 // out of range. On success the values are saved and the change callback runs.
 bool settings_replace(const settings_t *value);
 
+// Display idle timeout in seconds; zero disables automatic blanking.
+int settings_display_timeout(void);
+void settings_set_display_timeout(int seconds);
+
 // Called after settings_replace(), from the task that called it.
 void settings_on_change(void (*callback)(void));

@@ -1,11 +1,15 @@
 #include "display.h"
 
+#include <stdbool.h>
+#include <stdatomic.h>
+
 #include "board.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "driver/ledc.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
+#include "esp_timer.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_st77916.h"
@@ -18,6 +22,20 @@ static const char *TAG = "display";
 #define LCD_HOST          SPI2_HOST
 #define DRAW_BUF_LINES    40
 #define BL_DUTY_MAX       1023
+
+static atomic_int s_brightness = 100;
+static atomic_int s_idle_timeout;
+static atomic_llong s_last_activity_us;
+static atomic_bool s_backlight_on = true;
+static bool s_consume_wake_touch;
+
+static void set_backlight(bool on)
+{
+    atomic_store(&s_backlight_on, on);
+    const int duty = on ? BL_DUTY_MAX * atomic_load(&s_brightness) / 100 : 0;
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+}
 
 static void backlight_init(void)
 {
@@ -49,8 +67,55 @@ void display_set_brightness(int percent)
     } else if (percent > 100) {
         percent = 100;
     }
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, BL_DUTY_MAX * percent / 100);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+    atomic_store(&s_brightness, percent);
+    if (atomic_load(&s_backlight_on)) {
+        set_backlight(true);
+    }
+}
+
+void display_set_idle_timeout(int seconds)
+{
+    atomic_store(&s_idle_timeout, seconds);
+    display_note_activity();
+}
+
+void display_note_activity(void)
+{
+    atomic_store(&s_last_activity_us, esp_timer_get_time());
+    if (!atomic_load(&s_backlight_on)) {
+        set_backlight(true);
+    }
+}
+
+static void touch_input_event(lv_event_t *e)
+{
+    const lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_PRESSED) {
+        if (!atomic_load(&s_backlight_on)) {
+            display_note_activity();
+            s_consume_wake_touch = true;
+        } else {
+            // A drag can end without LVGL sending CLICKED; release the guard on the next touch.
+            s_consume_wake_touch = false;
+        }
+    }
+    if (!s_consume_wake_touch) {
+        return;
+    }
+
+    lv_indev_stop_processing(lv_event_get_current_target(e));
+    if (code == LV_EVENT_CLICKED) {
+        s_consume_wake_touch = false;
+    }
+}
+
+void display_idle_check(void)
+{
+    const int timeout = atomic_load(&s_idle_timeout);
+    if (timeout > 0 && atomic_load(&s_backlight_on) &&
+        esp_timer_get_time() - atomic_load(&s_last_activity_us) >= (int64_t)timeout * 1000000) {
+        set_backlight(false);
+    }
 }
 
 static void panel_init(esp_lcd_panel_io_handle_t *ret_io, esp_lcd_panel_handle_t *ret_panel)
@@ -141,7 +206,8 @@ lv_display_t *display_init(void)
         .disp = disp,
         .handle = touch,
     };
-    lvgl_port_add_touch(&touch_cfg);
+    lv_indev_t *touch_indev = lvgl_port_add_touch(&touch_cfg);
+    lv_indev_add_event_cb(touch_indev, touch_input_event, LV_EVENT_ALL, NULL);
 
     backlight_init();
     ESP_LOGI(TAG, "display ready");

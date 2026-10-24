@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include "board.h"
+#include "display.h"
 #include "screen.h"
 #include "status_bar.h"
 #include "theme.h"
@@ -263,6 +264,10 @@ static void consume_swipe(void)
 
 static void on_nav(lv_event_t *e)
 {
+    display_note_activity();
+    if (lv_event_get_code(e) == LV_EVENT_PRESSING) {
+        return;
+    }
     lv_point_t p;
     lv_indev_get_point(lv_indev_active(), &p);
 
@@ -387,6 +392,7 @@ static lv_obj_t *screen_create(void)
     lv_obj_set_clickable(scr, true);
     lv_obj_set_scrollable(scr, false);
     lv_obj_add_event_cb(scr, on_nav, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(scr, on_nav, LV_EVENT_PRESSING, NULL);
     lv_obj_add_event_cb(scr, on_nav, LV_EVENT_RELEASED, NULL);
     return scr;
 }

@@ -30,6 +30,8 @@ static void input_task(void *arg)
     uint8_t buttons = 0;   // last buttons sent, so the wheel does not drop a held drag
     int battery = -1;      // last battery level reported to the host
     while (1) {
+        display_idle_check();
+
         if (battery_percent() >= 0 && battery_percent() != battery) {
             battery = battery_percent();
             ble_hid_set_battery(battery);
@@ -52,6 +54,9 @@ static void input_task(void *arg)
         }
 
         const int detents = knob_take_scroll();
+        if (detents != 0) {
+            display_note_activity();
+        }
 
         int wheel = 0;
         if (ui_active() == UI_SCREEN_TOUCHPAD) {
@@ -82,6 +87,7 @@ void app_main(void)
 
     display_init();
     display_set_brightness(settings()->brightness);
+    display_set_idle_timeout(settings_display_timeout());
     knob_init();
     battery_init();
     ble_hid_init();

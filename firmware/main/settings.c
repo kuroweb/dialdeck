@@ -8,7 +8,9 @@ static const char *TAG = "settings";
 
 #define NVS_NAMESPACE   "dialdeck"
 #define NVS_KEY         "settings"
+#define NVS_DISPLAY_TIMEOUT_KEY "display_timeout"
 #define SAVE_DELAY_US   (1000 * 1000)
+#define DISPLAY_TIMEOUT_DEFAULT 30
 
 static settings_t s_settings = {
     .pointer_gain = 250,
@@ -18,6 +20,7 @@ static settings_t s_settings = {
     .scroll_reverse = 0,
     .brightness = 100,
 };
+static int32_t s_display_timeout = DISPLAY_TIMEOUT_DEFAULT;
 
 static const struct {
     size_t offset;
@@ -46,6 +49,9 @@ static void save(void *arg)
     }
     esp_err_t err = nvs_set_blob(nvs, NVS_KEY, &s_settings, sizeof(s_settings));
     if (err == ESP_OK) {
+        err = nvs_set_i32(nvs, NVS_DISPLAY_TIMEOUT_KEY, s_display_timeout);
+    }
+    if (err == ESP_OK) {
         err = nvs_commit(nvs);
     }
     nvs_close(nvs);
@@ -62,6 +68,7 @@ void settings_load(void)
         if (nvs_get_blob(nvs, NVS_KEY, &stored, &len) == ESP_OK && len == sizeof(stored)) {
             s_settings = stored;
         }
+        nvs_get_i32(nvs, NVS_DISPLAY_TIMEOUT_KEY, &s_display_timeout);
         nvs_close(nvs);
     }
 
@@ -75,6 +82,17 @@ void settings_load(void)
 settings_t *settings(void)
 {
     return &s_settings;
+}
+
+int settings_display_timeout(void)
+{
+    return s_display_timeout;
+}
+
+void settings_set_display_timeout(int seconds)
+{
+    s_display_timeout = seconds;
+    settings_changed();
 }
 
 void settings_range(size_t offset, int *min, int *max)

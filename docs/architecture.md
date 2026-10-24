@@ -17,14 +17,14 @@ ESP-IDF v6.1。アプリは `firmware/main`。画面は `screen_def_t`（`screen
 | ファイル | 役割 |
 | --- | --- |
 | `main.c` | 起動。タッチとノブを、HID か画面へ渡す |
-| `display.c` | 液晶 ST77916、タッチ CST816、LVGL、明るさ |
+| `display.c` | 液晶 ST77916、タッチ CST816、LVGL、明るさ、無操作時のバックライト消灯 |
 | `lcd_init_cmds.h` | 液晶の初期化列。出典は上流 v2.2.12 |
 | `knob.c` | ノブの目盛り |
 | `touchpad.c` | 画面をマウスにするジェスチャ |
 | `ble_hid.c` | BLE HID と、今話すホストの切り替え |
 | `host_slots.c` | ペアリングしたホスト。最大 3 |
 | `deck_config.c`, `deck_screen.c` | ボタン 9 個。中央と、上から時計回り |
-| `settings.c`, `settings_screen.c` | タッチパッド、スクロール、明るさ。NVS に保存 |
+| `settings.c`, `settings_screen.c` | タッチパッド、スクロール、明るさ、画面消灯までの時間。NVS に保存 |
 | `config_service.c` | GATT |
 | `agents.c`, `agents_screen.c` | Mac から受け取った agent の表示と操作 |
 | `battery.c` | 電池残量 |
