@@ -412,13 +412,15 @@ static void agents_create(lv_obj_t *scr)
     usage_on_change(on_usage_change);
 }
 
+// Wraps around: past the last page comes the first again.
 static void agents_page(int delta)
 {
-    const int page = s_page + delta;
-    if (page >= 0 && page < page_count()) {
-        s_page = page;
-        refresh_ring();
+    const int pages = page_count();
+    if (pages < 2) {
+        return;
     }
+    s_page = ((s_page + delta) % pages + pages) % pages;
+    refresh_ring();
 }
 
 static void agents_knob(int detents)
