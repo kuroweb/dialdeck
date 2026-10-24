@@ -96,9 +96,19 @@ cd mac
 ./scripts/build-app.sh --install
 ```
 
-`mac/build/DialDeck.app` を作り、`/Applications/DialDeck.app` にコピーする。起動中の DialDeck は終了してから置き換える。`--install` を付けなければ `mac/build/` に作るだけ。
+`mac/build/DialDeck.app` を作り、`/Applications/DialDeck.app` にコピーする。起動中の DialDeck は終了してから置き換える。`--install` を付けなければ `mac/build/` に作るだけ。バイナリは Apple シリコンと Intel の両方を含む。
 
-アプリは ad hoc 署名なので、ビルドした Mac でだけ開ける。
+### ビルドせずに入れる
+
+`mac/dist/DialDeck.app` はビルド済みのものを git に入れてある。ビルド環境の無い Mac では、clone してこれをコピーする。
+
+```
+cp -R mac/dist/DialDeck.app /Applications/
+```
+
+署名は ad hoc。ブラウザで落とした zip などから取り出したものは Gatekeeper に止められるので、`xattr -dr com.apple.quarantine /Applications/DialDeck.app` で隔離属性を外す。
+
+`mac/dist/` を更新するときは、ソースをコミットしてから `./scripts/build-app.sh --dist` を実行し、`mac/dist/` を別にコミットする。アプリの `CFBundleVersion` に元のコミットが入り、未コミットの変更があれば `-dirty` が付く。
 
 ### 初めて起動したとき
 

@@ -36,5 +36,6 @@ DialDeck の作業メモ。何を作っているかと技術スタックは [REA
 
 - ファームは ESP-IDF を有効にして `cd firmware && idf.py build`。
 - Mac アプリは `cd mac && ./scripts/build-app.sh`。`/Applications` へ置くときは `--install`。署名は ad hoc。
+- `mac/dist/DialDeck.app` は git に入れるビルド済みのアプリ。頼まれたときだけ `--dist` で更新し、ソースのコミットの後に別のコミットにする。
 - ファームを変えたら `cd firmware && idf.py -p /dev/cu.usbmodem* flash` で書き込む。`monitor` は付けない。書き込むと純正ファームは消える。
 - 実機で確かめていないことを、確かめたこととして docs に書かない。
