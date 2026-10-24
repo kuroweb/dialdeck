@@ -11,11 +11,11 @@
 #include "theme.h"
 #include "widgets.h"
 
-// Like a phone's notification shade: the menu is pulled down from the top edge of any screen and
-// pushed back up from its bottom edge. Only those edges are reserved, so a drag on the touchpad
-// that wanders to a side never switches screens.
+// Like a phone: the menu is pulled down from the top edge and pushed back up from the bottom of
+// the menu. Swiping in from the left or right edge moves to the previous or next function.
+// Only those edges are reserved, so a drag across the middle of the touchpad never switches.
 #define EDGE_BAND        52
-// Vertical travel needed to open or close the menu.
+// Travel needed before an edge swipe counts.
 #define SWIPE_MIN        50
 #define ANIM_MS          200
 #define TICK_MS          200
@@ -53,7 +53,7 @@ static lv_obj_t *s_wedge;
 static lv_obj_t *s_slots[MENU_VISIBLE];
 static lv_obj_t *s_center;
 static lv_point_t s_nav_start;
-static bool s_nav_swiped;   // this press already opened or closed the menu
+static bool s_nav_swiped;   // this press already navigated; ignore the click that follows
 
 bool ui_is_pull_down_start(lv_point_t p)
 {
@@ -63,6 +63,21 @@ bool ui_is_pull_down_start(lv_point_t p)
 static bool is_push_up_start(lv_point_t p)
 {
     return p.y >= BOARD_LCD_V_RES - EDGE_BAND;
+}
+
+static bool is_left_edge(lv_point_t p)
+{
+    return p.x < EDGE_BAND;
+}
+
+static bool is_right_edge(lv_point_t p)
+{
+    return p.x >= BOARD_LCD_H_RES - EDGE_BAND;
+}
+
+bool ui_is_side_swipe_start(lv_point_t p)
+{
+    return is_left_edge(p) || is_right_edge(p);
 }
 
 ui_screen_t ui_active(void)
@@ -164,8 +179,10 @@ static void menu_refresh(void)
 
 static void menu_focus_active(void)
 {
+    // The agent screen is part of Agents, so the menu opens on that icon.
+    const ui_screen_t screen = s_active == UI_SCREEN_AGENT ? UI_SCREEN_AGENTS : s_active;
     for (int i = 0; i < s_menu_count; i++) {
-        if (s_menu_items[i] == s_active) {
+        if (s_menu_items[i] == screen) {
             s_menu_focus = i;
             return;
         }
@@ -185,6 +202,65 @@ static void close_menu(ui_screen_t target)
     show(target, LV_SCREEN_LOAD_ANIM_OUT_TOP);
 }
 
+static int menu_index_of(ui_screen_t screen)
+{
+    for (int i = 0; i < s_menu_count; i++) {
+        if (s_menu_items[i] == screen) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// Where a side swipe starts from. The open menu uses the icon the knob has focused. The agent
+// screen has no menu entry of its own; it belongs to Agents.
+static int carousel_index(void)
+{
+    if (s_active == UI_SCREEN_MENU) {
+        return s_menu_focus;
+    }
+    const int index = menu_index_of(s_active);
+    if (index >= 0) {
+        return index;
+    }
+    if (s_active == UI_SCREEN_AGENT) {
+        return menu_index_of(UI_SCREEN_AGENTS);
+    }
+    return -1;
+}
+
+static void switch_function(int delta)
+{
+    if (s_menu_count < 2 || delta == 0) {
+        return;
+    }
+    int index = carousel_index();
+    if (index < 0) {
+        return;
+    }
+    index = (index + delta) % s_menu_count;
+    if (index < 0) {
+        index += s_menu_count;
+    }
+    const ui_screen_t target = s_menu_items[index];
+    if (target == s_active) {
+        return;
+    }
+    // A swipe to the left brings the next function in from the right, and the other way around.
+    show(target, delta > 0 ? LV_SCREEN_LOAD_ANIM_MOVE_LEFT : LV_SCREEN_LOAD_ANIM_MOVE_RIGHT);
+}
+
+static void consume_swipe(void)
+{
+    s_nav_swiped = true;
+    // A swipe is not a tap. Resetting the pointer drops the click that would otherwise fire on
+    // the button the finger started on.
+    lv_indev_t *indev = lv_indev_active();
+    if (indev) {
+        lv_indev_reset(indev, NULL);
+    }
+}
+
 static void on_nav(lv_event_t *e)
 {
     lv_point_t p;
@@ -198,15 +274,27 @@ static void on_nav(lv_event_t *e)
     // LV_EVENT_RELEASED
     const int dx = p.x - s_nav_start.x;
     const int dy = p.y - s_nav_start.y;
-    if (abs(dy) < SWIPE_MIN || abs(dy) < abs(dx)) {
+    const int adx = abs(dx);
+    const int ady = abs(dy);
+    if (ady >= SWIPE_MIN && ady >= adx) {
+        if (s_active != UI_SCREEN_MENU && dy > 0 && ui_is_pull_down_start(s_nav_start)) {
+            consume_swipe();
+            open_menu();
+        } else if (s_active == UI_SCREEN_MENU && dy < 0 && is_push_up_start(s_nav_start)) {
+            consume_swipe();
+            close_menu(s_before_menu);
+        }
         return;
     }
-    if (s_active != UI_SCREEN_MENU && dy > 0 && ui_is_pull_down_start(s_nav_start)) {
-        s_nav_swiped = true;
-        open_menu();
-    } else if (s_active == UI_SCREEN_MENU && dy < 0 && is_push_up_start(s_nav_start)) {
-        s_nav_swiped = true;
-        close_menu(s_before_menu);
+    if (adx < SWIPE_MIN || adx <= ady) {
+        return;
+    }
+    if (dx > 0 && is_left_edge(s_nav_start)) {
+        consume_swipe();
+        switch_function(-1);
+    } else if (dx < 0 && is_right_edge(s_nav_start)) {
+        consume_swipe();
+        switch_function(1);
     }
 }
 
@@ -316,9 +404,6 @@ void ui_create(void)
     for (int i = 0; i < UI_SCREEN_COUNT; i++) {
         s_screens[i] = screen_create();
         s_defs[i]->create(s_screens[i]);
-        if (i != UI_SCREEN_MENU) {
-            widget_handle(s_screens[i], LV_ALIGN_TOP_MID, THEME_HANDLE_Y);
-        }
         status_bar_create(s_screens[i]);
     }
 

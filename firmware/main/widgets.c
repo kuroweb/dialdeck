@@ -48,7 +48,7 @@ lv_obj_t *widget_row(lv_obj_t *list, const char *label, lv_obj_t **value,
     lv_obj_set_style_bg_color(row, theme_button_dim(), 0);
     lv_obj_set_style_pad_hor(row, 18, 0);
     lv_obj_set_clickable(row, true);
-    // Let the screen see the touch too, so a pull-down that starts on a row still opens the menu.
+    // Let the screen see the touch too, so a swipe that starts on a row still navigates.
     lv_obj_set_event_bubble(row, true);
     if (cb) {
         lv_obj_add_event_cb(row, cb, code, user_data);
@@ -99,7 +99,7 @@ lv_obj_t *widget_circle(lv_obj_t *parent, int diameter, lv_color_t color, lv_eve
     lv_obj_set_style_bg_color(btn, color, 0);
     lv_obj_set_style_shadow_width(btn, 0, 0);
     lv_obj_set_style_border_color(btn, theme_text(), 0);
-    // Let the screen see the touch too, so a pull-down that starts on a circle still opens the menu.
+    // Let the screen see the touch too, so a swipe that starts on a circle still navigates.
     lv_obj_set_event_bubble(btn, true);
     lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user_data);
 

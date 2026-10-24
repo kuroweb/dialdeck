@@ -27,5 +27,8 @@ void ui_show(ui_screen_t screen);
 // True if a touch starting at p may pull down the menu rather than being input for the screen.
 bool ui_is_pull_down_start(lv_point_t p);
 
+// True if a touch starting at p may switch to the previous or next function.
+bool ui_is_side_swipe_start(lv_point_t p);
+
 // Feed knob detents to the active screen. Call with the LVGL lock held.
 void ui_knob(int detents);

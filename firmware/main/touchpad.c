@@ -33,7 +33,7 @@ typedef enum {
     STATE_TAP_PENDING,  // tapped; waiting to see whether a second touch follows
     STATE_DRAG,         // second touch: left button held until release
     STATE_DONE,         // long press already fired: ignore the rest of this touch
-    STATE_IGNORED,      // touch started at the top edge: it may pull down the menu
+    STATE_IGNORED,      // touch started on an edge the shell uses to change screens
 } state_t;
 
 static QueueHandle_t s_reports;
@@ -140,7 +140,7 @@ static void move(lv_point_t p)
 
 static void on_pressed(lv_point_t p)
 {
-    if (ui_is_pull_down_start(p)) {
+    if (ui_is_pull_down_start(p) || ui_is_side_swipe_start(p)) {
         if (s_state == STATE_TAP_PENDING) {
             click(BLE_HID_BUTTON_LEFT);
         }

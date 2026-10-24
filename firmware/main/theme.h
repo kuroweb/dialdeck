@@ -69,10 +69,8 @@ static inline lv_color_t theme_busy(void)
 #define THEME_FONT_BODY   (&lv_font_montserrat_14)   // labels, values, the status bar
 // Text that comes from a host (agent titles) uses font_ja() from fonts/font_ja.h.
 
-// Layout of a screen, top to bottom. The status bar and the pull-down handle sit in the band
-// the menu is pulled down from.
+// Layout of a screen, top to bottom. The status bar sits in the band the menu is pulled down from.
 
-#define THEME_HANDLE_Y      6
 #define THEME_STATUS_Y      14
 #define THEME_TITLE_Y       48    // titles of list screens
 #define THEME_HINT_Y        (-40) // from the bottom
