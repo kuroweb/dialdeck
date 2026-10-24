@@ -1,89 +1,93 @@
 import DialDeckKit
 import SwiftUI
 
+/// The settings window: one tab per part of the device, each sized to its content, with the
+/// connection shown along the bottom.
 struct RootView: View {
     @ObservedObject var link: DeviceLink
     @ObservedObject var herdr: HerdrBridge
     @ObservedObject var usage: UsageMonitor
 
-    private let tabHeight: CGFloat = 540
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("DialDeck").font(.title2.bold())
-                Spacer()
-                HerdrBadge(state: herdr.state)
-                StatusBadge(state: link.state)
-                Button("Reload") { link.reload() }
-                    .disabled(link.state != .ready)
+        TabView {
+            page(width: 480, height: 330) {
+                AgentsSettingsView(link: link, herdr: herdr, usage: usage)
             }
+            .tabItem { Label("Agents", systemImage: "terminal") }
 
-            if link.state == .ready, !link.slots.isEmpty {
-                TabView {
-                    DeckEditorView(link: link)
-                        .padding()
-                        .tabItem { Text("Deck") }
-                    TouchpadSettingsView(link: link)
-                        .padding()
-                        .tabItem { Text("Touchpad") }
-                    UsageSettingsView(link: link, usage: usage)
-                        .padding()
-                        .tabItem { Text("Usage") }
-                }
-                // Tall enough that neither tab scrolls when the window opens.
-                .frame(minHeight: tabHeight)
-            } else {
-                Text(hint(for: link.state))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 320)
+            page(width: 480, height: 430) {
+                deviceContent { TouchpadSettingsView(link: link) }
             }
+            .tabItem { Label("Touchpad", systemImage: "hand.point.up.left") }
+
+            page(width: 700, height: 380) {
+                deviceContent { DeckEditorView(link: link).padding(20) }
+            }
+            .tabItem { Label("Deck", systemImage: "circle.grid.cross") }
         }
-        .padding(24)
-        .frame(width: 760)
+    }
+
+    private func page<Content: View>(width: CGFloat, height: CGFloat,
+                                     @ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 0) {
+            content()
+                .frame(width: width, height: height)
+            Divider()
+            ConnectionBar(link: link)
+        }
+        .frame(width: width)
+    }
+
+    /// Tabs that read and write the device need it connected.
+    @ViewBuilder
+    private func deviceContent<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        if link.state == .ready, !link.slots.isEmpty {
+            content()
+        } else {
+            Text(hint(for: link.state))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 
     private func hint(for state: DeviceLink.State) -> String {
         switch state {
         case .bluetoothOff: "Bluetooth is off or not allowed for DialDeck."
-        case .searching: "DialDeck is not connected. Pair it in System Settings → Bluetooth."
+        case .searching: "DialDeck is not connected.\nPair it in System Settings → Bluetooth."
         case .connecting: "Connecting…"
-        case .ready: ""
+        case .ready: "Reading the device…"
         case .failed(let message): message
         }
     }
 }
 
-private struct StatusBadge: View {
-    let state: DeviceLink.State
+/// The device connection, and Reload to read the assignments and settings again.
+private struct ConnectionBar: View {
+    @ObservedObject var link: DeviceLink
 
     var body: some View {
-        let (text, color): (String, Color) = switch state {
+        let (text, color): (String, Color) = switch link.state {
         case .ready: ("Connected", .green)
         case .connecting: ("Connecting", .orange)
         case .searching: ("Not connected", .secondary)
         case .bluetoothOff: ("Bluetooth off", .red)
         case .failed: ("Error", .red)
         }
-        Label(text, systemImage: "circle.fill")
-            .font(.callout)
-            .foregroundStyle(color)
-    }
-}
-
-/// Whether agents reach the device: herdr reachable, and how many agents it reports.
-private struct HerdrBadge: View {
-    let state: HerdrBridge.State
-
-    var body: some View {
-        let (text, color, help): (String, Color, String) = switch state {
-        case .starting: ("herdr", .secondary, "Looking for herdr")
-        case .running(let agents): ("herdr: \(agents)", .green, "Agents are sent to the device")
-        case .unavailable(let message): ("herdr", .orange, message)
+        HStack {
+            Image(systemName: "circle.fill")
+                .font(.system(size: 8))
+                .foregroundStyle(color)
+            Text(text)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Reload") { link.reload() }
+                .controlSize(.small)
+                .disabled(link.state != .ready)
         }
-        Label(text, systemImage: "terminal")
-            .font(.callout)
-            .foregroundStyle(color)
-            .help(help)
+        .font(.callout)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
     }
 }

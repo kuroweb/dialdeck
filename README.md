@@ -6,7 +6,7 @@
 - ノブでスクロールし、画面をタッチパッドにしてマウスとして使う
 - herdr と連携し、エージェントの状態表示や操作をする
 
-動くものは二つ。デバイスのファームウェアと、Mac のウィンドウアプリ。ファイルの対応は [docs/architecture.md](docs/architecture.md)。
+動くものは二つ。デバイスのファームウェアと、Mac のメニューバー常駐アプリ。ファイルの対応は [docs/architecture.md](docs/architecture.md)。
 
 ## 技術スタック
 

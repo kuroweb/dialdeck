@@ -5,7 +5,7 @@ DialDeck の作業メモ。何を作っているかと技術スタックは [REA
 ## 構成
 
 - `firmware/` は ESP-IDF。アプリは `firmware/main/`。画面は `screen_def_t`（`screen.h`）で、切り替えは `ui.c`。
-- `mac/` は Swift Package。`DialDeckKit` が BLE と herdr、`DialDeck` がウィンドウアプリ。ビルドは `mac/scripts/build-app.sh`。Xcode のプロジェクトは無い。
+- `mac/` は Swift Package。`DialDeckKit` が BLE と herdr、`DialDeck` がメニューバー常駐アプリと設定ウィンドウ。ビルドは `mac/scripts/build-app.sh`。Xcode のプロジェクトは無い。
 - `docs/` は日本語の手順、構成、Cursor の設定、実機で確かめたこと、GATT の形式。
 - `.clangd` と `.vscode/` は、診断を `firmware/main` の手書きと `mac/` の Swift に限る。生成フォントや ESP-IDF の警告を出すために広げない。説明は [docs/editor.md](docs/editor.md)。
 - `.claude/skills/guition-jc3636k718c` は上流 v2.2.12 のスキルをそのまま置いたもの。DialDeck 側の差分は書かない。

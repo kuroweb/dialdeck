@@ -25,17 +25,21 @@ public struct UsageWindow: Equatable, Sendable {
     public var resetsAt: Date?
 }
 
-/// Reads plan usage for the chosen provider once a minute and writes it to the device.
+/// Reads plan usage for the chosen provider and writes it to the device. Local logs are read once
+/// a minute; web APIs every five minutes, and less often after they answer 429, with the last
+/// values kept on the device in the meantime.
 ///
 /// Claude: the usage endpoint Claude Code's /usage reads, with the OAuth token Claude Code keeps
 /// in the login keychain. Codex: the rate limits Codex writes into its newest session log.
 /// Cursor: the usage summary of cursor.com, with the token Cursor keeps in its state database.
-/// None of these are public APIs; when one fails the device shows the windows as unknown.
+/// None of these are public APIs; when one fails before any value was read, the device shows the
+/// windows as unknown.
 @MainActor
 public final class UsageMonitor: ObservableObject {
     public enum State: Equatable {
         case off
         case running([UsageWindow])
+        case stale([UsageWindow], String)   // the last values, and why reading again failed
         case unavailable(String)
     }
 
@@ -47,7 +51,7 @@ public final class UsageMonitor: ObservableObject {
             UserDefaults.standard.set(provider.rawValue, forKey: Self.providerKey)
             // Show the new name on the device right away; the windows follow once read.
             if provider != .off {
-                send(provider, [UsageWindow(label: "--", percent: nil, resetsAt: nil)])
+                send(provider, cache[provider] ?? [UsageWindow(label: "--", percent: nil, resetsAt: nil)])
             }
             poll()
         }
@@ -57,6 +61,11 @@ public final class UsageMonitor: ObservableObject {
     private var timer: Timer?
     private var lastSent: Data?
     private var linkReady = false
+    // Per provider: the last values read, and when it may be asked again.
+    private var cache: [UsageProvider: [UsageWindow]] = [:]
+    private var nextFetch: [UsageProvider: Date] = [:]
+    private var backoff: [UsageProvider: TimeInterval] = [:]
+    private var fetching: Set<UsageProvider> = []
 
     public init(link: DeviceLink) {
         self.link = link
@@ -91,6 +100,11 @@ public final class UsageMonitor: ObservableObject {
         }
     }
 
+    /// How often a provider is read when it answers normally.
+    private static func interval(_ provider: UsageProvider) -> TimeInterval {
+        provider == .codex ? 60 : 300
+    }
+
     private func poll() {
         let provider = provider
         guard provider != .off else {
@@ -98,6 +112,12 @@ public final class UsageMonitor: ObservableObject {
             send(provider, [])
             return
         }
+        guard Date() >= nextFetch[provider, default: .distantPast], !fetching.contains(provider) else {
+            // Not yet: keep the device's reset times current from the last values.
+            if let windows = cache[provider] { send(provider, windows) }
+            return
+        }
+        fetching.insert(provider)
         Task.detached {
             let result: Result<[UsageWindow], Error>
             do {
@@ -105,18 +125,37 @@ public final class UsageMonitor: ObservableObject {
             } catch {
                 result = .failure(error)
             }
-            await MainActor.run {
-                // The choice may have changed while fetching.
-                guard self.provider == provider else { return }
-                switch result {
-                case .success(let windows):
-                    self.state = .running(windows)
-                    self.send(provider, windows)
-                case .failure(let error):
-                    self.state = .unavailable(error.localizedDescription)
-                    self.send(provider, [UsageWindow(label: "--", percent: nil, resetsAt: nil)])
-                }
-            }
+            await MainActor.run { self.finish(provider, result) }
+        }
+    }
+
+    private func finish(_ provider: UsageProvider, _ result: Result<[UsageWindow], Error>) {
+        fetching.remove(provider)
+        let normal = Self.interval(provider)
+        switch result {
+        case .success(let windows):
+            cache[provider] = windows
+            backoff[provider] = nil
+            nextFetch[provider] = Date().addingTimeInterval(normal)
+        case .failure(let error):
+            // Back off, doubling up to half an hour, or as long as the server asks.
+            let wait = min(max(backoff[provider].map { $0 * 2 } ?? normal, normal), 1800)
+            backoff[provider] = wait
+            let retryAfter = (error as? FetchError)?.retryAfter ?? 0
+            nextFetch[provider] = Date().addingTimeInterval(max(wait, retryAfter))
+        }
+        // The choice may have changed while fetching.
+        guard self.provider == provider else { return }
+        switch (result, cache[provider]) {
+        case (.success(let windows), _):
+            state = .running(windows)
+            send(provider, windows)
+        case (.failure(let error), let windows?):
+            state = .stale(windows, error.localizedDescription)
+            send(provider, windows)
+        case (.failure(let error), nil):
+            state = .unavailable(error.localizedDescription)
+            send(provider, [UsageWindow(label: "--", percent: nil, resetsAt: nil)])
         }
     }
 
@@ -151,7 +190,11 @@ public final class UsageMonitor: ObservableObject {
 
     struct FetchError: LocalizedError {
         let errorDescription: String?
-        init(_ message: String) { errorDescription = message }
+        var retryAfter: TimeInterval?   // seconds the server asked to wait
+        init(_ message: String, retryAfter: TimeInterval? = nil) {
+            errorDescription = message
+            self.retryAfter = retryAfter
+        }
     }
 
     private nonisolated static func fetch(_ provider: UsageProvider) async throws -> [UsageWindow] {
@@ -301,7 +344,8 @@ public final class UsageMonitor: ObservableObject {
         request.timeoutInterval = 15
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-            throw FetchError("\(request.url?.host() ?? "Server") returned \(http.statusCode)")
+            throw FetchError("\(request.url?.host() ?? "Server") returned \(http.statusCode)",
+                             retryAfter: (http.value(forHTTPHeaderField: "Retry-After")).flatMap(TimeInterval.init))
         }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw FetchError("Unexpected response")

@@ -1,6 +1,8 @@
 import DialDeckKit
 import SwiftUI
 
+/// Lives in the menu bar so herdr and usage keep reaching the device with no window open. The
+/// editor is the settings window, opened from the menu.
 @main
 struct DialDeckApp: App {
     @StateObject private var link: DeviceLink
@@ -19,9 +21,11 @@ struct DialDeckApp: App {
     }
 
     var body: some Scene {
-        Window("DialDeck", id: "main") {
+        MenuBarExtra("DialDeck", systemImage: "dial.medium") {
+            MenuContent(link: link, herdr: herdr, usage: usage)
+        }
+        Settings {
             RootView(link: link, herdr: herdr, usage: usage)
         }
-        .windowResizability(.contentSize)
     }
 }

@@ -63,6 +63,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
     <string>0.1</string>
     <key>CFBundleVersion</key>
     <string>$commit</string>
+    <key>LSUIElement</key>
+    <true/>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>NSBluetoothAlwaysUsageDescription</key>

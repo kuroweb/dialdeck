@@ -112,8 +112,8 @@ cp -R mac/dist/DialDeck.app /Applications/
 
 ### 初めて起動したとき
 
-1. `/Applications/DialDeck.app` を開く
+1. `/Applications/DialDeck.app` を開く。Dock には出ず、メニューバーにダイヤルのアイコンが出る。設定はメニューの Settings… で開く。ログインのたびに起動するなら、メニューの Launch at Login を入れる
 2. Bluetooth の利用を求めるダイアログで許可する。ビルドし直すと署名が変わるので、もう一度聞かれることがある
 3. DialDeck を Mac とペアリングしておく（システム設定 → Bluetooth）。アプリはペアリング済みで接続中の DialDeck を使い、自分では探さない
 
-ウィンドウに `Not connected` と出たままなら、ファームの GATT サービスが変わって Mac が古い構成を覚えている可能性がある。システム設定 → Bluetooth で DialDeck を削除し、ペアリングし直す。
+設定ウィンドウやメニューに `Not connected` と出たままなら、ファームの GATT サービスが変わって Mac が古い構成を覚えている可能性がある。システム設定 → Bluetooth で DialDeck を削除し、ペアリングし直す。
