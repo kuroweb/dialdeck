@@ -15,7 +15,9 @@
     <key>CFBundleShortVersionString</key>
     <string>0.1</string>
     <key>CFBundleVersion</key>
-    <string>a2e7c1a</string>
+    <string>4f69510</string>
+    <key>LSUIElement</key>
+    <true/>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
