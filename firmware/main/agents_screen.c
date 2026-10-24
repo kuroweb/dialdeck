@@ -38,9 +38,8 @@ static int s_page;
 // Center
 static lv_obj_t *s_arcs[USAGE_WINDOWS];
 static lv_obj_t *s_usage_name;
-static lv_obj_t *s_usage_main;
-static lv_obj_t *s_usage_sub;
-static lv_obj_t *s_usage_reset;
+static lv_obj_t *s_usage_values[USAGE_WINDOWS];   // "5h 20%"; the first one large
+static lv_obj_t *s_usage_resets[USAGE_WINDOWS];   // time until that window resets
 
 // Agent
 static lv_obj_t *s_detail_status;
@@ -211,12 +210,16 @@ static lv_color_t usage_color(int percent)
     return percent >= 90 ? theme_danger() : percent >= 70 ? theme_warning() : theme_accent_text();
 }
 
+// "45m" and "3h 20m" within a few hours, whole hours up to a week (a weekly limit reads as hours
+// left), days beyond.
 static void format_reset(char *buf, size_t len, int minutes)
 {
     if (minutes < 60) {
         snprintf(buf, len, LV_SYMBOL_REFRESH " %dm", minutes);
-    } else if (minutes < 48 * 60) {
+    } else if (minutes < 10 * 60) {
         snprintf(buf, len, LV_SYMBOL_REFRESH " %dh %dm", minutes / 60, minutes % 60);
+    } else if (minutes <= 7 * 24 * 60) {
+        snprintf(buf, len, LV_SYMBOL_REFRESH " %dh", minutes / 60);
     } else {
         snprintf(buf, len, LV_SYMBOL_REFRESH " %dd", minutes / (24 * 60));
     }
@@ -251,29 +254,27 @@ static void refresh_usage(void)
     if (!shown) {
         lv_label_set_text(s_usage_name, "Agents");
         snprintf(text, sizeof(text), "%d", s_count);
-        lv_label_set_text(s_usage_main, text);
-        lv_label_set_text(s_usage_sub, "");
-        lv_label_set_text(s_usage_reset, "");
+        lv_label_set_text(s_usage_values[0], text);
+        lv_label_set_text(s_usage_resets[0], "");
+        lv_label_set_text(s_usage_values[1], "");
+        lv_label_set_text(s_usage_resets[1], "");
         return;
     }
     lv_label_set_text(s_usage_name, usage.name);
-    if (usage.count > 0) {
-        format_window(text, sizeof(text), &usage.windows[0]);
-        lv_label_set_text(s_usage_main, text);
-    } else {
-        lv_label_set_text(s_usage_main, "--");
-    }
-    if (usage.count > 1) {
-        format_window(text, sizeof(text), &usage.windows[1]);
-        lv_label_set_text(s_usage_sub, text);
-    } else {
-        lv_label_set_text(s_usage_sub, "");
-    }
-    if (usage.count > 0 && usage.windows[0].reset_minutes != USAGE_NO_RESET) {
-        format_reset(text, sizeof(text), usage.windows[0].reset_minutes);
-        lv_label_set_text(s_usage_reset, text);
-    } else {
-        lv_label_set_text(s_usage_reset, "");
+    for (int i = 0; i < USAGE_WINDOWS; i++) {
+        const usage_window_t *w = &usage.windows[i];
+        if (i < usage.count) {
+            format_window(text, sizeof(text), w);
+        } else {
+            strlcpy(text, i == 0 ? "--" : "", sizeof(text));
+        }
+        lv_label_set_text(s_usage_values[i], text);
+        if (i < usage.count && w->reset_minutes != USAGE_NO_RESET) {
+            format_reset(text, sizeof(text), w->reset_minutes);
+        } else {
+            text[0] = '\0';
+        }
+        lv_label_set_text(s_usage_resets[i], text);
     }
 }
 
@@ -355,10 +356,12 @@ static void center_create(lv_obj_t *scr)
         s_arcs[i] = arc;
     }
 
-    s_usage_name = center_label(center, THEME_FONT_BODY, theme_text_muted(), -30);
-    s_usage_main = center_label(center, THEME_FONT_TITLE, theme_text(), -6);
-    s_usage_sub = center_label(center, THEME_FONT_BODY, theme_text(), 18);
-    s_usage_reset = center_label(center, THEME_FONT_BODY, theme_text_muted(), 38);
+    // Name, then each window with its reset time under it. Kept inside the inner arc.
+    s_usage_name = center_label(center, THEME_FONT_BODY, theme_text_muted(), -42);
+    s_usage_values[0] = center_label(center, THEME_FONT_TITLE, theme_text(), -22);
+    s_usage_resets[0] = center_label(center, THEME_FONT_BODY, theme_text_muted(), -2);
+    s_usage_values[1] = center_label(center, THEME_FONT_BODY, theme_text(), 19);
+    s_usage_resets[1] = center_label(center, THEME_FONT_BODY, theme_text_muted(), 37);
 }
 
 static void agents_create(lv_obj_t *scr)
