@@ -15,6 +15,7 @@
 // Like a phone: the menu is pulled down from the top edge and pushed back up from the bottom of
 // the menu. Swiping in from the left or right edge moves to the previous or next function.
 // Only those edges are reserved, so a drag across the middle of the touchpad never switches.
+// Other vertical swipes go to the screen, which may page with them.
 #define EDGE_BAND        52
 // Travel needed before an edge swipe counts.
 #define SWIPE_MIN        50
@@ -287,6 +288,9 @@ static void on_nav(lv_event_t *e)
         } else if (s_active == UI_SCREEN_MENU && dy < 0 && is_push_up_start(s_nav_start)) {
             consume_swipe();
             close_menu(s_before_menu);
+        } else if (s_defs[s_active]->page) {
+            consume_swipe();
+            s_defs[s_active]->page(dy < 0 ? 1 : -1);
         }
         return;
     }

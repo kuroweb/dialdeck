@@ -14,13 +14,18 @@
 #define RING_ITEM      80    // ring item diameter
 #define RING_CENTER    160   // center item diameter
 
-// Place `obj` at ring position `slot` (0-7), clockwise from the top. Offset by half a step so no
-// item sits right under the pull-down edge or the status bar at the top.
-static inline void ring_place(lv_obj_t *obj, int slot)
+// Place `obj` at ring position `slot` (0-7), `radius` from the ring center, clockwise from the
+// top. Offset by half a step so no item sits right under the pull-down edge or the status bar.
+static inline void ring_place_at(lv_obj_t *obj, int slot, int radius)
 {
     const float a = 2 * (float)M_PI / RING_SLOTS * (slot + 0.5f);
-    lv_obj_align(obj, LV_ALIGN_CENTER, (int)lroundf(RING_RADIUS * sinf(a)),
-                 RING_OFFSET_Y + (int)lroundf(-RING_RADIUS * cosf(a)));
+    lv_obj_align(obj, LV_ALIGN_CENTER, (int)lroundf(radius * sinf(a)),
+                 RING_OFFSET_Y + (int)lroundf(-radius * cosf(a)));
+}
+
+static inline void ring_place(lv_obj_t *obj, int slot)
+{
+    ring_place_at(obj, slot, RING_RADIUS);
 }
 
 static inline void ring_place_center(lv_obj_t *obj)

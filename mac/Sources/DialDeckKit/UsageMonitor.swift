@@ -1,0 +1,319 @@
+import Foundation
+import Security
+import SQLite3
+
+/// Coding agent whose plan usage is shown in the middle of the device's agents screen.
+public enum UsageProvider: String, CaseIterable, Identifiable, Sendable {
+    case off, claude, codex, cursor
+
+    public var id: String { rawValue }
+
+    public var name: String {
+        switch self {
+        case .off: "Off"
+        case .claude: "Claude"
+        case .codex: "Codex"
+        case .cursor: "Cursor"
+        }
+    }
+}
+
+/// One limit window of a plan, such as Claude's five hours.
+public struct UsageWindow: Equatable, Sendable {
+    public var label: String
+    public var percent: Int?   // nil when unknown
+    public var resetsAt: Date?
+}
+
+/// Reads plan usage for the chosen provider once a minute and writes it to the device.
+///
+/// Claude: the usage endpoint Claude Code's /usage reads, with the OAuth token Claude Code keeps
+/// in the login keychain. Codex: the rate limits Codex writes into its newest session log.
+/// Cursor: the usage summary of cursor.com, with the token Cursor keeps in its state database.
+/// None of these are public APIs; when one fails the device shows the windows as unknown.
+@MainActor
+public final class UsageMonitor: ObservableObject {
+    public enum State: Equatable {
+        case off
+        case running([UsageWindow])
+        case unavailable(String)
+    }
+
+    static let providerKey = "usageProvider"
+
+    @Published public private(set) var state: State = .off
+    @Published public var provider: UsageProvider {
+        didSet {
+            UserDefaults.standard.set(provider.rawValue, forKey: Self.providerKey)
+            // Show the new name on the device right away; the windows follow once read.
+            if provider != .off {
+                send(provider, [UsageWindow(label: "--", percent: nil, resetsAt: nil)])
+            }
+            poll()
+        }
+    }
+
+    private let link: DeviceLink
+    private var timer: Timer?
+    private var lastSent: Data?
+    private var linkReady = false
+
+    public init(link: DeviceLink) {
+        self.link = link
+        provider = UsageProvider(rawValue: UserDefaults.standard.string(forKey: Self.providerKey) ?? "") ?? .off
+        link.onNextUsage = { [weak self] in self?.showNext() }
+    }
+
+    /// Switch to the provider after the current one, wrapping around through Off.
+    public func showNext() {
+        let all = UsageProvider.allCases
+        provider = all[(all.firstIndex(of: provider)! + 1) % all.count]
+    }
+
+    public func start() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.poll() }
+        }
+        // Resend soon after the device reconnects: it forgets the usage when it restarts.
+        Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.checkLink() }
+        }
+        poll()
+    }
+
+    private func checkLink() {
+        let ready = link.state == .ready
+        defer { linkReady = ready }
+        if ready && !linkReady {
+            lastSent = nil
+            poll()
+        }
+    }
+
+    private func poll() {
+        let provider = provider
+        guard provider != .off else {
+            state = .off
+            send(provider, [])
+            return
+        }
+        Task.detached {
+            let result: Result<[UsageWindow], Error>
+            do {
+                result = .success(try await Self.fetch(provider))
+            } catch {
+                result = .failure(error)
+            }
+            await MainActor.run {
+                // The choice may have changed while fetching.
+                guard self.provider == provider else { return }
+                switch result {
+                case .success(let windows):
+                    self.state = .running(windows)
+                    self.send(provider, windows)
+                case .failure(let error):
+                    self.state = .unavailable(error.localizedDescription)
+                    self.send(provider, [UsageWindow(label: "--", percent: nil, resetsAt: nil)])
+                }
+            }
+        }
+    }
+
+    private func send(_ provider: UsageProvider, _ windows: [UsageWindow]) {
+        guard link.state == .ready else { return }
+        let data = Self.encode(provider, windows, now: Date())
+        if data != lastSent {
+            lastSent = data
+            link.writeUsage(data)
+        }
+    }
+
+    /// [name len][name][window count] then per window [label len][label][percent][reset minutes LE16].
+    /// An empty name tells the device to show no usage.
+    static func encode(_ provider: UsageProvider, _ windows: [UsageWindow], now: Date) -> Data {
+        let name = provider == .off ? "" : provider.name
+        var data = Data([UInt8(name.utf8.count)])
+        data.append(contentsOf: name.utf8)
+        let shown = windows.prefix(2)
+        data.append(UInt8(shown.count))
+        for window in shown {
+            let label = Data(window.label.utf8.prefix(7))
+            data.append(UInt8(label.count))
+            data.append(label)
+            data.append(window.percent.map { UInt8(min(max($0, 0), 100)) } ?? 0xFF)
+            let minutes = window.resetsAt.map { UInt16(min(max($0.timeIntervalSince(now) / 60, 0), 0xFFFE)) } ?? 0xFFFF
+            data.append(UInt8(minutes & 0xFF))
+            data.append(UInt8(minutes >> 8))
+        }
+        return data
+    }
+
+    struct FetchError: LocalizedError {
+        let errorDescription: String?
+        init(_ message: String) { errorDescription = message }
+    }
+
+    private nonisolated static func fetch(_ provider: UsageProvider) async throws -> [UsageWindow] {
+        switch provider {
+        case .off: []
+        case .claude: try await fetchClaude()
+        case .codex: try fetchCodex()
+        case .cursor: try await fetchCursor()
+        }
+    }
+
+    // MARK: Claude
+
+    private nonisolated static func fetchClaude() async throws -> [UsageWindow] {
+        guard let credentials = keychainPassword(service: "Claude Code-credentials"),
+              let json = try JSONSerialization.jsonObject(with: credentials) as? [String: Any],
+              let oauth = json["claudeAiOauth"] as? [String: Any],
+              let token = oauth["accessToken"] as? String else {
+            throw FetchError("Claude Code is not signed in")
+        }
+        var request = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+        let body = try await fetchJSON(request)
+        return [("five_hour", "5h"), ("seven_day", "7d")].map { key, label in
+            let window = body[key] as? [String: Any]
+            return UsageWindow(label: label,
+                               percent: (window?["utilization"] as? Double).map { Int($0.rounded()) },
+                               resetsAt: (window?["resets_at"] as? String).flatMap(parseDate))
+        }
+    }
+
+    private nonisolated static func keychainPassword(service: String) -> Data? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess else { return nil }
+        return item as? Data
+    }
+
+    // MARK: Codex
+
+    /// Codex logs its rate limits with every token count, so the newest session has the latest.
+    private nonisolated static func fetchCodex() throws -> [UsageWindow] {
+        let sessions = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".codex/sessions")
+        let keys: [URLResourceKey] = [.contentModificationDateKey]
+        let files = (FileManager.default.enumerator(at: sessions, includingPropertiesForKeys: keys)?
+            .compactMap { $0 as? URL } ?? [])
+            .filter { $0.pathExtension == "jsonl" }
+            .map { ($0, (try? $0.resourceValues(forKeys: Set(keys)).contentModificationDate) ?? .distantPast) }
+            .sorted { $0.1 > $1.1 }
+        for (file, _) in files.prefix(5) {
+            if let limits = lastRateLimits(in: file) {
+                return [("primary", "5h"), ("secondary", "7d")].map { key, fallback in
+                    let window = limits[key] as? [String: Any]
+                    let label = (window?["window_minutes"] as? Int).map(windowLabel) ?? fallback
+                    let resetsAt = (window?["resets_at"] as? Double).map { Date(timeIntervalSince1970: $0) }
+                    // The log is only as new as the last Codex turn; a window that has reset since is empty.
+                    if let resetsAt, resetsAt < Date() {
+                        return UsageWindow(label: label, percent: 0, resetsAt: nil)
+                    }
+                    return UsageWindow(label: label,
+                                       percent: (window?["used_percent"] as? Double).map { Int($0.rounded()) },
+                                       resetsAt: resetsAt)
+                }
+            }
+        }
+        throw FetchError("No Codex session with rate limits")
+    }
+
+    /// The rate limits of the last token count in the tail of a session log.
+    private nonisolated static func lastRateLimits(in file: URL) -> [String: Any]? {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
+        defer { try? handle.close() }
+        let size = (try? handle.seekToEnd()) ?? 0
+        try? handle.seek(toOffset: size > 512 * 1024 ? size - 512 * 1024 : 0)
+        guard let data = try? handle.readToEnd() else { return nil }
+        for line in String(decoding: data, as: UTF8.self).split(separator: "\n").reversed()
+            where line.contains("\"rate_limits\"") {
+            if let json = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+               let payload = json["payload"] as? [String: Any],
+               let limits = payload["rate_limits"] as? [String: Any] {
+                return limits
+            }
+        }
+        return nil
+    }
+
+    private nonisolated static func windowLabel(minutes: Int) -> String {
+        minutes % 1440 == 0 ? "\(minutes / 1440)d" : minutes % 60 == 0 ? "\(minutes / 60)h" : "\(minutes)m"
+    }
+
+    // MARK: Cursor
+
+    private nonisolated static func fetchCursor() async throws -> [UsageWindow] {
+        let database = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: "Library/Application Support/Cursor/User/globalStorage/state.vscdb")
+        guard let token = sqliteValue(database, key: "cursorAuth/accessToken"),
+              let userID = jwtSubject(token)?.split(separator: "|").last else {
+            throw FetchError("Cursor is not signed in")
+        }
+        var request = URLRequest(url: URL(string: "https://cursor.com/api/usage-summary")!)
+        request.setValue("WorkosCursorSessionToken=\(userID)%3A%3A\(token)", forHTTPHeaderField: "Cookie")
+        let body = try await fetchJSON(request)
+        let plan = (body["individualUsage"] as? [String: Any])?["plan"] as? [String: Any]
+        var percent = (plan?["totalPercentUsed"] as? Double).map { Int($0.rounded()) }
+        if percent == nil, let used = plan?["used"] as? Double, let limit = plan?["limit"] as? Double, limit > 0 {
+            percent = Int((used / limit * 100).rounded())
+        }
+        return [UsageWindow(label: "Month", percent: percent,
+                            resetsAt: (body["billingCycleEnd"] as? String).flatMap(parseDate))]
+    }
+
+    private nonisolated static func sqliteValue(_ database: URL, key: String) -> String? {
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(database.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_close(db) }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT value FROM ItemTable WHERE key = ?", -1, &statement, nil) == SQLITE_OK else {
+            return nil
+        }
+        defer { sqlite3_finalize(statement) }
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(statement, 1, key, -1, transient)
+        guard sqlite3_step(statement) == SQLITE_ROW, let text = sqlite3_column_text(statement, 0) else { return nil }
+        return String(cString: text)
+    }
+
+    private nonisolated static func jwtSubject(_ token: String) -> String? {
+        let parts = token.split(separator: ".")
+        guard parts.count == 3 else { return nil }
+        var base64 = parts[1].replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        base64 += String(repeating: "=", count: (4 - base64.count % 4) % 4)
+        guard let data = Data(base64Encoded: base64),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return json["sub"] as? String
+    }
+
+    // MARK: Shared
+
+    private nonisolated static func fetchJSON(_ request: URLRequest) async throws -> [String: Any] {
+        var request = request
+        request.timeoutInterval = 15
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+            throw FetchError("\(request.url?.host() ?? "Server") returned \(http.statusCode)")
+        }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw FetchError("Unexpected response")
+        }
+        return json
+    }
+
+    private nonisolated static func parseDate(_ text: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: text) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: text)
+    }
+}

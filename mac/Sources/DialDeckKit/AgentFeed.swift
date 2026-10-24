@@ -53,31 +53,37 @@ public struct AgentSummary: Equatable, Sendable {
 
 /// Encoding of the agent list for the device (see docs/config-protocol.md).
 public enum AgentFeed {
-    public static let maxAgents = 8
+    public static let maxAgents = 32
+    public static let pageSize = 8
     public static let maxBytes = 512
     // Byte limits including the device's NUL terminator.
     static let idLength = 24
     static let titleLength = 96
     static let detailLength = 160
 
-    /// [count] then per agent [status][id len][id][title len][title][detail len][detail].
-    /// Titles and details are cut on character boundaries to fit the device and one 512-byte write.
-    public static func encode(_ agents: [AgentSummary]) -> Data {
+    /// One write per page of eight: [page][page count][count] then per agent
+    /// [status][id len][id][title len][title][detail len][detail]. Titles and details are cut on
+    /// character boundaries to fit the device and one 512-byte write.
+    public static func encode(_ agents: [AgentSummary]) -> [Data] {
         let shown = Array(agents.prefix(maxAgents))
-        // Details matter only for blocked agents, and are the first thing to shorten.
-        for detailLimit in [detailLength - 1, 80, 0] {
-            var data = Data([UInt8(shown.count)])
-            for agent in shown {
-                data.append(agent.status.rawValue)
-                append(agent.id, limit: idLength - 1, to: &data)
-                append(agent.title, limit: titleLength - 1, to: &data)
-                append(agent.detail, limit: detailLimit, to: &data)
+        let pages = max(1, (shown.count + pageSize - 1) / pageSize)
+        return (0..<pages).map { page in
+            let agents = shown.dropFirst(page * pageSize).prefix(pageSize)
+            // Details matter only for blocked agents, and are the first thing to shorten.
+            for detailLimit in [detailLength - 1, 80, 0] {
+                var data = Data([UInt8(page), UInt8(pages), UInt8(agents.count)])
+                for agent in agents {
+                    data.append(agent.status.rawValue)
+                    append(agent.id, limit: idLength - 1, to: &data)
+                    append(agent.title, limit: titleLength - 1, to: &data)
+                    append(agent.detail, limit: detailLimit, to: &data)
+                }
+                if data.count <= maxBytes || detailLimit == 0 {
+                    return data
+                }
             }
-            if data.count <= maxBytes || detailLimit == 0 {
-                return data
-            }
+            return Data()
         }
-        return Data([0])
     }
 
     private static func append(_ text: String, limit: Int, to data: inout Data) {

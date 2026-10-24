@@ -43,36 +43,51 @@ static bool read_string(const uint8_t **p, const uint8_t *end, char *dst, size_t
     return true;
 }
 
+// [page][page count][count] then `count` agents. Pages arrive in order on the NimBLE host task;
+// they are collected here and replace the list together, so the screen never shows half of one.
 bool agents_replace(const uint8_t *data, size_t len)
 {
     const uint8_t *p = data;
     const uint8_t *end = data + len;
-    if (len < 1 || *p > AGENT_MAX) {
+    if (len < 3) {
         return false;
     }
+    const int page = *p++;
+    const int pages = *p++;
     const int count = *p++;
-
     // Static rather than on the stack: this runs on the NimBLE host task, whose stack is small.
     // Only that task writes the list, so one buffer is enough.
     static agent_t parsed[AGENT_MAX];
+    static int s_next_page;
+    if (pages < 1 || pages * AGENT_PAGE > AGENT_MAX || page >= pages || count > AGENT_PAGE ||
+        (page > 0 && page != s_next_page) || (page < pages - 1 && count != AGENT_PAGE)) {
+        return false;
+    }
+
+    agent_t *dst = &parsed[page * AGENT_PAGE];
     for (int i = 0; i < count; i++) {
         if (p >= end || *p > AGENT_UNKNOWN) {
             return false;
         }
-        parsed[i].status = *p++;
-        if (!read_string(&p, end, parsed[i].id, AGENT_ID_LEN) ||
-            !read_string(&p, end, parsed[i].title, AGENT_TITLE_LEN) ||
-            !read_string(&p, end, parsed[i].detail, AGENT_DETAIL_LEN)) {
+        dst[i].status = *p++;
+        if (!read_string(&p, end, dst[i].id, AGENT_ID_LEN) ||
+            !read_string(&p, end, dst[i].title, AGENT_TITLE_LEN) ||
+            !read_string(&p, end, dst[i].detail, AGENT_DETAIL_LEN)) {
             return false;
         }
     }
     if (p != end) {
         return false;
     }
+    s_next_page = page + 1;
+    if (page < pages - 1) {
+        return true;
+    }
 
+    const int total = page * AGENT_PAGE + count;
     lock();
-    memcpy(s_agents, parsed, sizeof(agent_t) * count);
-    s_count = count;
+    memcpy(s_agents, parsed, sizeof(agent_t) * total);
+    s_count = total;
     s_known = true;
     unlock();
     if (s_on_change) {

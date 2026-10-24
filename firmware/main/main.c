@@ -12,6 +12,7 @@
 #include "settings.h"
 #include "touchpad.h"
 #include "ui.h"
+#include "usage.h"
 
 static void nvs_init(void)
 {
@@ -84,6 +85,7 @@ void app_main(void)
     deck_config_load();
     host_slots_load();
     agents_init();
+    usage_init();
 
     display_init();
     display_set_brightness(settings()->brightness);

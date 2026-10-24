@@ -17,7 +17,7 @@ public final class HerdrBridge: ObservableObject {
 
     private let link: DeviceLink
     private var timer: Timer?
-    private var lastSent: Data?
+    private var lastSent: [Data]?
     private var linkReady = false
     private var polling = false
     // What a blocked agent is asking, keyed by pane id and the state change it belongs to, so the

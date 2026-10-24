@@ -8,10 +8,11 @@
 #include "esp_log.h"
 #include "host/ble_hs.h"
 #include "settings.h"
+#include "usage.h"
 
 static const char *TAG = "config_service";
 
-#define PROTOCOL_VERSION  3
+#define PROTOCOL_VERSION  4
 
 // 98d3462c-2eb8-4022-ba87-4f253e72a24b and characteristics sharing its base.
 // NimBLE takes 128-bit UUIDs least significant byte first.
@@ -24,6 +25,7 @@ static const ble_uuid128_t s_deck_uuid = CONFIG_UUID(0x2e);
 static const ble_uuid128_t s_settings_uuid = CONFIG_UUID(0x2f);
 static const ble_uuid128_t s_agents_uuid = CONFIG_UUID(0x30);
 static const ble_uuid128_t s_action_uuid = CONFIG_UUID(0x31);
+static const ble_uuid128_t s_usage_uuid = CONFIG_UUID(0x32);
 
 static uint16_t s_action_handle;
 
@@ -81,10 +83,10 @@ static int access_settings(uint16_t conn, uint16_t attr, struct ble_gatt_access_
     return 0;
 }
 
-// Agents: the Mac app writes the whole herdr agent list whenever it changes.
+// Agents: the Mac app writes the whole herdr agent list, one page per write, whenever it changes.
 static int access_agents(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    // The list can exceed one ATT packet; the Mac sends it as a long write, which NimBLE
+    // A page can exceed one ATT packet; the Mac sends it as a long write, which NimBLE
     // reassembles before calling here.
     static uint8_t buf[512];
     uint16_t len = 0;
@@ -92,6 +94,17 @@ static int access_agents(uint16_t conn, uint16_t attr, struct ble_gatt_access_ct
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
     }
     return agents_replace(buf, len) ? 0 : BLE_ATT_ERR_VALUE_NOT_ALLOWED;
+}
+
+// Usage: the Mac app writes how much of the chosen agent's plan is used.
+static int access_usage(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    uint8_t buf[64];
+    uint16_t len = 0;
+    if (OS_MBUF_PKTLEN(ctxt->om) > sizeof(buf) || ble_hs_mbuf_to_flat(ctxt->om, buf, sizeof(buf), &len) != 0) {
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+    return usage_replace(buf, len) ? 0 : BLE_ATT_ERR_VALUE_NOT_ALLOWED;
 }
 
 // Action: notify only. The value is sent with config_service_send_action().
@@ -133,6 +146,12 @@ static const struct ble_gatt_svc_def s_services[] = {
                 .access_cb = access_action,
                 .val_handle = &s_action_handle,
                 .flags = BLE_GATT_CHR_F_NOTIFY,
+            },
+            {
+                // After action, so the handles of the older characteristics stay where they were.
+                .uuid = &s_usage_uuid.u,
+                .access_cb = access_usage,
+                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
             },
             { 0 },
         },

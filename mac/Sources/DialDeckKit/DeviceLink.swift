@@ -21,21 +21,30 @@ public final class DeviceLink: NSObject, ObservableObject {
     static let settingsUUID = CBUUID(string: "98D3462F-2EB8-4022-BA87-4F253E72A24B")
     static let agentsUUID = CBUUID(string: "98D34630-2EB8-4022-BA87-4F253E72A24B")
     static let actionUUID = CBUUID(string: "98D34631-2EB8-4022-BA87-4F253E72A24B")
+    static let usageUUID = CBUUID(string: "98D34632-2EB8-4022-BA87-4F253E72A24B")
     static let hidServiceUUID = CBUUID(string: "1812")
-    static let supportedProtocol: UInt8 = 3
+    static let supportedProtocol: UInt8 = 4
 
     @Published public private(set) var state: State = .searching
     @Published public private(set) var slots: [DeckSlot] = []
     @Published public private(set) var settings: DeviceSettings?
+    /// False when macOS still has the device's services as they were before usage was added.
+    @Published public private(set) var usageSupported = false
 
     /// Called when the device asks to act on a herdr agent (see AgentAction).
     public var onAgentAction: ((AgentAction, String) -> Void)?
+    /// Called when the device asks to show the next usage provider (its center was tapped).
+    public var onNextUsage: (() -> Void)?
+    static let nextUsageAction: UInt8 = 6
 
     private var central: CBCentralManager!
     private var peripheral: CBPeripheral?
     private var deckCharacteristic: CBCharacteristic?
     private var settingsCharacteristic: CBCharacteristic?
     private var agentsCharacteristic: CBCharacteristic?
+    private var usageCharacteristic: CBCharacteristic? {
+        didSet { usageSupported = usageCharacteristic != nil }
+    }
     private var pendingSettings: DeviceSettings?
     private var retryTimer: Timer?
     private var pendingWrites: [(Int, DeckSlot)] = []
@@ -59,11 +68,20 @@ public final class DeviceLink: NSObject, ObservableObject {
         peripheral.writeValue(newSettings.wire, for: settingsCharacteristic, type: .withResponse)
     }
 
-    /// Replace the herdr agent list shown on the device. Values over one packet are sent as a
-    /// long write, which CoreBluetooth does on its own for writes with response.
-    public func writeAgents(_ data: Data) {
+    /// Replace the herdr agent list shown on the device, one write per page. Writes with response
+    /// arrive in order, and a page over one packet is sent as a long write, which CoreBluetooth
+    /// does on its own.
+    public func writeAgents(_ pages: [Data]) {
         guard let peripheral, let agentsCharacteristic else { return }
-        peripheral.writeValue(data, for: agentsCharacteristic, type: .withResponse)
+        for page in pages {
+            peripheral.writeValue(page, for: agentsCharacteristic, type: .withResponse)
+        }
+    }
+
+    /// Replace the plan usage shown in the middle of the agents screen.
+    public func writeUsage(_ data: Data) {
+        guard let peripheral, let usageCharacteristic else { return }
+        peripheral.writeValue(data, for: usageCharacteristic, type: .withResponse)
     }
 
     /// Write one assignment. The device saves it and redraws the button.
@@ -102,6 +120,7 @@ public final class DeviceLink: NSObject, ObservableObject {
         deckCharacteristic = nil
         settingsCharacteristic = nil
         agentsCharacteristic = nil
+        usageCharacteristic = nil
         pendingWrites.removeAll()
         pendingSettings = nil
         state = newState
@@ -148,7 +167,8 @@ extension DeviceLink: CBPeripheralDelegate {
                 return
             }
             peripheral.discoverCharacteristics(
-                [Self.infoUUID, Self.deckUUID, Self.settingsUUID, Self.agentsUUID, Self.actionUUID], for: service)
+                [Self.infoUUID, Self.deckUUID, Self.settingsUUID, Self.agentsUUID, Self.actionUUID, Self.usageUUID],
+                for: service)
         }
     }
 
@@ -166,6 +186,9 @@ extension DeviceLink: CBPeripheralDelegate {
             deckCharacteristic = deck
             settingsCharacteristic = settings
             agentsCharacteristic = agents
+            // Optional: macOS may keep the service as it was before usage was added until the
+            // device is paired again.
+            usageCharacteristic = characteristics.first(where: { $0.uuid == Self.usageUUID })
             peripheral.setNotifyValue(true, for: action)
             peripheral.readValue(for: info)
         }
@@ -194,6 +217,10 @@ extension DeviceLink: CBPeripheralDelegate {
                 settings = DeviceSettings(wire: value)
             case Self.actionUUID:
                 // [action, id length, id]
+                if value.first == Self.nextUsageAction {
+                    onNextUsage?()
+                    return
+                }
                 guard value.count >= 2, let action = AgentAction(rawValue: value[0]),
                       value.count == 2 + Int(value[1]) else { return }
                 onAgentAction?(action, String(decoding: value.dropFirst(2), as: UTF8.self))
@@ -205,9 +232,9 @@ extension DeviceLink: CBPeripheralDelegate {
 
     public nonisolated func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         MainActor.assumeIsolated {
-            if characteristic.uuid == Self.agentsUUID {
-                // A refused list is replaced by the next one; it must not break the editor.
-                if let error { NSLog("DialDeck: agents write failed: \(error.localizedDescription)") }
+            if characteristic.uuid == Self.agentsUUID || characteristic.uuid == Self.usageUUID {
+                // A refused value is replaced by the next one; it must not break the editor.
+                if let error { NSLog("DialDeck: \(characteristic.uuid) write failed: \(error.localizedDescription)") }
                 return
             }
             if characteristic.uuid == Self.settingsUUID {

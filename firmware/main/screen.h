@@ -10,6 +10,7 @@ typedef struct {
     void (*create)(lv_obj_t *scr);
     void (*knob)(int detents);   // NULL if the knob does nothing on this screen
     void (*tick)(void);          // called every 200 ms while the screen is shown; may be NULL
+    void (*page)(int delta);     // vertical swipe the shell does not use: +1 up, -1 down; may be NULL
 } screen_def_t;
 
 extern const screen_def_t touchpad_screen;

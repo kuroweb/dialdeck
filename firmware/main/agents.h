@@ -6,7 +6,8 @@
 
 // herdr agents as last sent by the Mac app (see docs/config-protocol.md).
 
-#define AGENT_MAX         8
+#define AGENT_MAX         32
+#define AGENT_PAGE        8     // agents per write, and per page on the agents screen
 #define AGENT_ID_LEN      24    // herdr pane id, bytes including NUL
 #define AGENT_TITLE_LEN   96    // UTF-8 bytes including NUL
 #define AGENT_DETAIL_LEN  160   // what a blocked agent is asking, UTF-8 bytes including NUL
@@ -39,7 +40,8 @@ typedef enum {
 // Call once before the BLE stack starts.
 void agents_init(void);
 
-// Replace the list from the wire format. Returns false, changing nothing, if malformed.
+// Take one page of the list in the wire format. The list is replaced once its last page arrives.
+// Returns false, changing nothing, if malformed or out of order.
 bool agents_replace(const uint8_t *data, size_t len);
 
 // True once the Mac app has sent a list since boot.

@@ -26,7 +26,8 @@ ESP-IDF v6.1。アプリは `firmware/main`。画面は `screen_def_t`（`screen
 | `deck_config.c`, `deck_screen.c` | ボタン 9 個。中央と、上から時計回り |
 | `settings.c`, `settings_screen.c` | タッチパッド、スクロール、明るさ、画面消灯までの時間、Bluetooth ホスト切り替えとペアリング |
 | `config_service.c` | GATT |
-| `agents.c`, `agents_screen.c` | Mac から受け取った agent の表示と操作 |
+| `agents.c`, `agents_screen.c` | Mac から受け取った agent の表示と操作。8 件ずつのページを縦スワイプかノブで送る |
+| `usage.c` | Mac から受け取った agent のプランの使用量。Agents 画面の中央に出す |
 | `battery.c` | 電池残量 |
 | `board.h` | ピン |
 | `fonts/` | 日本語フォント。`font_ja_16.c` は `firmware/tools/make-font.sh` の生成物 |
@@ -39,10 +40,10 @@ Swift Package。macOS 14、Swift ツール 6.0、言語モード 5。Xcode の�
 
 | ターゲット | 役割 |
 | --- | --- |
-| `DialDeckKit` | GATT、ファームと同じバイト列、herdr のソケット |
-| `DialDeck` | SwiftUI のウィンドウ。タブは Deck と Touchpad |
+| `DialDeckKit` | GATT、ファームと同じバイト列、herdr のソケット、プランの使用量の取得（`UsageMonitor.swift`） |
+| `DialDeck` | SwiftUI のウィンドウ。タブは Deck、Touchpad、Usage |
 
-ウィンドウの入口は `mac/Sources/DialDeck/DialDeckApp.swift`。ボタンの編集は `DeckEditorView.swift`、タッチパッドと明るさは `TouchpadSettingsView.swift`。
+ウィンドウの入口は `mac/Sources/DialDeck/DialDeckApp.swift`。ボタンの編集は `DeckEditorView.swift`、タッチパッドと明るさは `TouchpadSettingsView.swift`。使用量を出す agent（Claude、Codex、Cursor）は `UsageSettingsView.swift`（Usage タブ）で選ぶ。デバイスの Agents 画面の中央をタップしても次へ切り替わる。
 
 ビルドは `mac/scripts/build-app.sh`。CoreBluetooth には Bluetooth の使用目的を書いた Info.plist が要るので、SwiftPM の実行ファイルを `.app` に包んで ad hoc 署名する。
 

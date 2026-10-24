@@ -4,6 +4,7 @@ import SwiftUI
 struct RootView: View {
     @ObservedObject var link: DeviceLink
     @ObservedObject var herdr: HerdrBridge
+    @ObservedObject var usage: UsageMonitor
 
     private let tabHeight: CGFloat = 540
 
@@ -26,6 +27,9 @@ struct RootView: View {
                     TouchpadSettingsView(link: link)
                         .padding()
                         .tabItem { Text("Touchpad") }
+                    UsageSettingsView(link: link, usage: usage)
+                        .padding()
+                        .tabItem { Text("Usage") }
                 }
                 // Tall enough that neither tab scrolls when the window opens.
                 .frame(minHeight: tabHeight)
