@@ -8,6 +8,9 @@ public enum UsageProvider: String, CaseIterable, Identifiable, Sendable {
 
     public var id: String { rawValue }
 
+    /// Agents whose usage may be offered on this Mac (not Off).
+    public static let configurable: [UsageProvider] = [.claude, .codex, .cursor]
+
     public var name: String {
         switch self {
         case .off: "Off"
@@ -45,14 +48,21 @@ public final class UsageMonitor: ObservableObject {
     }
 
     static let providerKey = "usageProvider"
+    private static let enabledProvidersKey = "usageEnabledProviders"
 
     @Published public private(set) var state: State = .off
+    @Published public private(set) var enabledProviders: Set<UsageProvider>
     @Published public var provider: UsageProvider {
         didSet {
             UserDefaults.standard.set(provider.rawValue, forKey: Self.providerKey)
             syncStateForProvider()
             poll()
         }
+    }
+
+    /// Off plus agents enabled in settings (picker and device tap use this order).
+    public var selectableProviders: [UsageProvider] {
+        [.off] + UsageProvider.configurable.filter { enabledProviders.contains($0) }
     }
 
     private let link: DeviceLink
@@ -67,14 +77,51 @@ public final class UsageMonitor: ObservableObject {
 
     public init(link: DeviceLink) {
         self.link = link
-        provider = UsageProvider(rawValue: UserDefaults.standard.string(forKey: Self.providerKey) ?? "") ?? .off
+        let enabled = Self.loadEnabledProviders()
+        enabledProviders = enabled
+        var chosen = UsageProvider(rawValue: UserDefaults.standard.string(forKey: Self.providerKey) ?? "") ?? .off
+        if chosen != .off, !enabled.contains(chosen) {
+            chosen = .off
+        }
+        provider = chosen
         link.onNextUsage = { [weak self] in self?.showNext() }
     }
 
-    /// Switch to the provider after the current one, wrapping around through Off.
+    public func isProviderEnabled(_ provider: UsageProvider) -> Bool {
+        provider == .off || enabledProviders.contains(provider)
+    }
+
+    public func setProviderEnabled(_ provider: UsageProvider, enabled: Bool) {
+        guard UsageProvider.configurable.contains(provider) else { return }
+        var set = enabledProviders
+        if enabled {
+            set.insert(provider)
+        } else {
+            set.remove(provider)
+        }
+        enabledProviders = set
+        UserDefaults.standard.set(set.map(\.rawValue).sorted(), forKey: Self.enabledProvidersKey)
+        if !enabled, self.provider == provider {
+            self.provider = .off
+        }
+    }
+
+    private static func loadEnabledProviders() -> Set<UsageProvider> {
+        guard let raw = UserDefaults.standard.stringArray(forKey: enabledProvidersKey) else {
+            return Set(UsageProvider.configurable)
+        }
+        return Set(raw.compactMap(UsageProvider.init(rawValue:)))
+    }
+
+    /// Switch to the next enabled provider, wrapping around through Off.
     public func showNext() {
-        let all = UsageProvider.allCases
-        provider = all[(all.firstIndex(of: provider)! + 1) % all.count]
+        let order = selectableProviders
+        guard !order.isEmpty else {
+            provider = .off
+            return
+        }
+        let index = order.firstIndex(of: provider) ?? 0
+        provider = order[(index + 1) % order.count]
     }
 
     public func start() {

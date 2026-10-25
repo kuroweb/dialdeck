@@ -25,8 +25,19 @@ struct AgentsSettingsView: View {
             }
 
             Section {
+                ForEach(UsageProvider.configurable) { agent in
+                    Toggle(agent.name, isOn: enabledBinding(agent))
+                }
+            } header: {
+                Text("Usage sources")
+            } footer: {
+                Text("Turn off agents that are not installed on this Mac. They are omitted from the picker and from tapping the device center.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Picker("Show usage of", selection: $usage.provider) {
-                    ForEach(UsageProvider.allCases) { Text($0.name).tag($0) }
+                    ForEach(usage.selectableProviders) { Text($0.name).tag($0) }
                 }
                 switch usage.state {
                 case .off:
@@ -59,6 +70,13 @@ struct AgentsSettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func enabledBinding(_ agent: UsageProvider) -> Binding<Bool> {
+        Binding(
+            get: { usage.isProviderEnabled(agent) },
+            set: { usage.setProviderEnabled(agent, enabled: $0) }
+        )
     }
 
     private var usageFooter: String {

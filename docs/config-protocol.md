@@ -73,7 +73,7 @@ Mac アプリが herdr の agent の一覧を丸ごと書き込む。一覧が�
 
 ## usage（書き込み、暗号化必須）
 
-Agents 画面の中央に出す、agent のプランの使用量。Mac アプリの設定か、デバイスの中央のタップ（action の 6）で選んだもの（Claude、Codex、Cursor）を読み（Codex は 1 分、Claude と Cursor は 5 分ごと。429 などで失敗したら間隔を延ばし、前の値を送る）、変わったときと、デバイスがつなぎ直したときに書き込む。
+Agents 画面の中央に出す、agent のプランの使用量。Mac アプリの設定で有効にした agent（Claude、Codex、Cursor）だけを、設定の Picker かデバイスの中央タップ（action の 6）で選べる。読み取りは Codex が 1 分、Claude と Cursor が 5 分ごと。429 などで失敗したら間隔を延ばし、前の値を送る。変わったときと、デバイスがつなぎ直したときに書き込む。
 
 `[名前の長さ][名前][窓の数]` に続けて、窓ごとに `[ラベルの長さ][ラベル][使用率][リセットまでの分]`。
 
@@ -95,7 +95,7 @@ Mac アプリが GATT を版 3 の構成のまま覚えていて usage が見つ
 
 - Focus: herdr で workspace、tab、pane の順にフォーカスし、起動中のターミナルアプリを前面に出す
 - Enter / Esc / 上 / 下: `agent send-keys` でそのキーを送る
-- 次の使用量: Agents 画面の中央をタップしたときに送る。ID は空。Mac アプリは使用量を出す先を Off、Claude、Codex、Cursor の順に 1 つ進め、usage を書き込み直す
+- 次の使用量: Agents 画面の中央をタップしたときに送る。ID は空。Mac アプリは、この Mac で有効な agent だけを Off → Claude → Codex → Cursor の順で 1 つ進め、usage を書き込み直す
 
 ## 版の履歴
 
