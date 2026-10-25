@@ -35,7 +35,7 @@ struct TouchpadSettingsView: View {
             .onChange(of: link.settings) { _, newValue in draft = newValue }
         } else {
             ProgressView()
-                .frame(maxWidth: .infinity, minHeight: 320)
+                .frame(maxWidth: .infinity, minHeight: 160)
                 .onAppear { draft = link.settings }
                 .onChange(of: link.settings) { _, newValue in draft = newValue }
         }

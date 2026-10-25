@@ -25,44 +25,50 @@ struct RootView: View {
     @State private var selection: SettingsPage = .agents
     @FocusState private var focusedPage: SettingsPage?
 
+    private static let contentWidth: CGFloat = 400
+    private static let sidebarWidth: CGFloat = 160
+
     var body: some View {
         HStack(spacing: 0) {
             sidebar
             Divider()
             VStack(spacing: 0) {
-                Group {
-                    switch selection {
-                    case .agents:
-                        AgentsSettingsView(link: link, herdr: herdr, usage: usage)
-                    case .touchpad:
-                        deviceContent { TouchpadSettingsView(link: link) }
-                    case .deck:
-                        deviceContent { DeckEditorView(link: link).padding(20) }
+                ScrollView {
+                    Group {
+                        switch selection {
+                        case .agents:
+                            AgentsSettingsView(link: link, herdr: herdr, usage: usage)
+                        case .touchpad:
+                            deviceContent { TouchpadSettingsView(link: link) }
+                        case .deck:
+                            deviceContent { DeckEditorView(link: link) }
+                        }
                     }
+                    .frame(maxWidth: Self.contentWidth)
+                    .frame(maxWidth: .infinity)
+                    .padding(16)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
                 Divider()
                 ConnectionBar(link: link)
             }
         }
-        .frame(width: 720, height: 540)
+        .frame(width: Self.sidebarWidth + Self.contentWidth + 32, height: 520)
     }
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             Label("DialDeck", systemImage: "dial.medium")
                 .font(.headline)
-                .padding(.horizontal, 18)
-                .frame(height: 58)
+                .padding(.horizontal, 14)
+                .frame(height: 52)
 
             Text("DEVICE")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .padding(.leading, 18)
-                .padding(.bottom, 8)
+                .padding(.leading, 14)
+                .padding(.bottom, 6)
 
-            VStack(spacing: 3) {
+            VStack(spacing: 2) {
                 ForEach(SettingsPage.allCases) { page in
                     Button {
                         selection = page
@@ -70,26 +76,25 @@ struct RootView: View {
                     } label: {
                         Label(page.rawValue, systemImage: page.symbol)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 12)
-                            .frame(height: 34)
+                            .padding(.horizontal, 10)
+                            .frame(height: 32)
                             .background(selection == page ? Color.primary.opacity(0.12) : .clear,
-                                        in: RoundedRectangle(cornerRadius: 8))
+                                        in: RoundedRectangle(cornerRadius: 7))
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(SidebarButtonStyle())
                     .focused($focusedPage, equals: page)
                     .focusEffectDisabled()
-                    // Button actions run on mouse-up; switch pages as soon as the press starts.
                     .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { _ in
                         if selection != page { selection = page }
                     })
                 }
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 8)
 
             Spacer()
         }
-        .frame(width: 190)
+        .frame(width: Self.sidebarWidth)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -102,8 +107,7 @@ struct RootView: View {
             Text(hint(for: link.state))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .padding()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, minHeight: 200)
         }
     }
 
@@ -148,7 +152,7 @@ private struct ConnectionBar: View {
                 .disabled(link.state != .ready)
         }
         .font(.callout)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
     }
 }

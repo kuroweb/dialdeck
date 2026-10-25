@@ -12,8 +12,12 @@ struct DeckEditorView: View {
     @State private var selection = 0
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            DeckPreview(slots: link.slots, selection: $selection)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Spacer(minLength: 0)
+                DeckPreview(slots: link.slots, selection: $selection)
+                Spacer(minLength: 0)
+            }
             SlotEditor(name: slotName(selection), stored: link.slots[selection]) {
                 link.write($0, at: selection)
             }
@@ -133,7 +137,6 @@ private struct SlotEditor: View {
             }
         }
         .formStyle(.grouped)
-        .frame(maxWidth: .infinity)
         .onAppear(perform: load)
         .onChange(of: stored) { _, _ in load() }
     }
