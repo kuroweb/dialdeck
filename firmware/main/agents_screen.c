@@ -136,10 +136,10 @@ static void agent_create(lv_obj_t *scr)
 {
     s_detail_status = widget_title(scr, "");
 
-    s_detail_title = host_text(scr, 250, 2, theme_text());
+    s_detail_title = host_text(scr, 280, 2, theme_text());
     lv_obj_align(s_detail_title, LV_ALIGN_TOP_MID, 0, THEME_TITLE_Y + 28);
 
-    s_detail_text = host_text(scr, 270, 4, theme_text_muted());
+    s_detail_text = host_text(scr, 320, 4, theme_text_muted());
     lv_obj_align(s_detail_text, LV_ALIGN_TOP_MID, 0, THEME_TITLE_Y + 74);
 
     s_reply_row = widget_button_row(scr, 54);
@@ -378,7 +378,7 @@ static void agents_create(lv_obj_t *scr)
     const int lines = 3;
     const float r = DOT_SIZE / 2.0f;
     const float half = lines * line / 2.0f;
-    const int width = 2 * (int)sqrtf(r * r - half * half) - 8;
+    const int width = 2 * (int)sqrtf(r * r - half * half);
     for (int i = 0; i < RING_SLOTS; i++) {
         s_dots[i] = widget_circle(scr, DOT_SIZE, theme_button(), on_dot, (void *)(intptr_t)i);
         ring_place_at(s_dots[i], i, DOT_RADIUS);
