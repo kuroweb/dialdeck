@@ -22,7 +22,7 @@ typedef enum {
     GROUP_COUNT,
 } setting_group_t;
 
-static const char *const s_group_names[GROUP_COUNT] = { "TrackPad", "Display", "Battery", "Bluetooth", "Usage" };
+static const char *const s_group_names[GROUP_COUNT] = { "TrackPad", "Display", "Battery", "Bluetooth", "Agents" };
 
 typedef enum {
     FMT_X100,
