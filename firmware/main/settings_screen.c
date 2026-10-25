@@ -15,11 +15,12 @@ typedef enum {
     GROUP_POINTER,
     GROUP_SCROLL,
     GROUP_DISPLAY,
+    GROUP_BATTERY,
     GROUP_BLUETOOTH,
     GROUP_COUNT,
 } setting_group_t;
 
-static const char *const s_group_names[GROUP_COUNT] = { "Pointer", "Scroll", "Display", "BT" };
+static const char *const s_group_names[GROUP_COUNT] = { "Pointer", "Scroll", "Display", "Battery", "BT" };
 
 typedef enum {
     FMT_X100,
@@ -58,7 +59,9 @@ static lv_obj_t *s_list;
 static lv_obj_t *s_host_rows[HOST_SLOT_COUNT];
 static lv_obj_t *s_host_states[HOST_SLOT_COUNT];
 static lv_obj_t *s_hint;
+static lv_obj_t *s_battery_level;
 static lv_obj_t *s_battery_voltage;
+static lv_obj_t *s_battery_power;
 static int s_selected;
 static setting_group_t s_group;
 
@@ -129,13 +132,16 @@ static void on_row(lv_event_t *e)
 }
 
 static void refresh_hosts(void);
+static void refresh_battery(void);
 static void on_host_tap(lv_event_t *e);
 static void on_host_hold(lv_event_t *e);
 
 static void show_group(setting_group_t group)
 {
     s_group = group;
+    s_battery_level = NULL;
     s_battery_voltage = NULL;
+    s_battery_power = NULL;
     int first = -1;
     for (int i = 0; i < ITEM_COUNT; i++) {
         s_rows[i] = NULL;
@@ -144,7 +150,7 @@ static void show_group(setting_group_t group)
             first = i;
         }
     }
-    s_selected = group == GROUP_BLUETOOTH ? -1 : first;
+    s_selected = first;
     for (int i = 0; i < HOST_SLOT_COUNT; i++) {
         s_host_rows[i] = NULL;
         s_host_states[i] = NULL;
@@ -156,6 +162,14 @@ static void show_group(setting_group_t group)
     lv_label_set_text(s_group_title, s_group_names[group]);
 
     lv_obj_clean(s_list);
+    if (group == GROUP_BATTERY) {
+        lv_label_set_text(s_hint, "USB shows charger voltage");
+        widget_row(s_list, "Level", &s_battery_level, NULL, 0, NULL);
+        widget_row(s_list, "Voltage", &s_battery_voltage, NULL, 0, NULL);
+        widget_row(s_list, "Power", &s_battery_power, NULL, 0, NULL);
+        refresh_battery();
+        return;
+    }
     if (group == GROUP_BLUETOOTH) {
         lv_label_set_text(s_hint, "Tap to switch, hold to pair again");
         for (int i = 0; i < HOST_SLOT_COUNT; i++) {
@@ -178,15 +192,6 @@ static void show_group(setting_group_t group)
                                (void *)(intptr_t)i);
         widget_row_set_selected(s_rows[i], i == s_selected);
         render_value(i);
-    }
-    if (group == GROUP_DISPLAY) {
-        widget_row(s_list, "Sense voltage", &s_battery_voltage, NULL, 0, NULL);
-        const int mv = battery_voltage_mv();
-        if (mv < 0) {
-            lv_label_set_text(s_battery_voltage, "--");
-        } else {
-            lv_label_set_text_fmt(s_battery_voltage, "%d.%03dV", mv / 1000, mv % 1000);
-        }
     }
 }
 
@@ -214,6 +219,24 @@ static void refresh_hosts(void)
         lv_label_set_text(s_host_states[i], text);
         widget_row_set_selected(s_host_rows[i], i == active);
     }
+}
+
+static void refresh_battery(void)
+{
+    const bool external = battery_charging();
+    const int percent = battery_percent();
+    const int mv = battery_voltage_mv();
+    if (external || percent < 0) {
+        lv_label_set_text(s_battery_level, "--");
+    } else {
+        lv_label_set_text_fmt(s_battery_level, "%d%%", percent);
+    }
+    if (mv < 0) {
+        lv_label_set_text(s_battery_voltage, "--");
+    } else {
+        lv_label_set_text_fmt(s_battery_voltage, "%d.%03dV", mv / 1000, mv % 1000);
+    }
+    lv_label_set_text(s_battery_power, mv < 0 ? "--" : external ? "External" : "Battery");
 }
 
 static void on_host_tap(lv_event_t *e)
@@ -282,11 +305,8 @@ static void tick(void)
 {
     if (s_group == GROUP_BLUETOOTH) {
         refresh_hosts();
-    } else if (s_group == GROUP_DISPLAY && s_battery_voltage) {
-        const int mv = battery_voltage_mv();
-        if (mv >= 0) {
-            lv_label_set_text_fmt(s_battery_voltage, "%d.%03dV", mv / 1000, mv % 1000);
-        }
+    } else if (s_group == GROUP_BATTERY) {
+        refresh_battery();
     }
 }
 
@@ -295,11 +315,13 @@ static void create(lv_obj_t *scr)
     widget_title(scr, "Settings");
     lv_obj_t *sidebar = widget_list(scr, 0);
     lv_obj_set_width(sidebar, 88);
-    lv_obj_set_style_pad_row(sidebar, 8, 0);
-    lv_obj_align(sidebar, LV_ALIGN_TOP_LEFT, 38, 110);
+    lv_obj_set_style_pad_row(sidebar, 6, 0);
+    lv_obj_align(sidebar, LV_ALIGN_TOP_LEFT, 38, 100);
     for (int i = 0; i < GROUP_COUNT; i++) {
         s_group_rows[i] = widget_row(sidebar, s_group_names[i], NULL, on_group,
                                      LV_EVENT_PRESSED, (void *)(intptr_t)i);
+        lv_obj_set_height(s_group_rows[i], 30);
+        lv_obj_set_style_radius(s_group_rows[i], 15, 0);
     }
 
     s_list = widget_list(scr, 24);
