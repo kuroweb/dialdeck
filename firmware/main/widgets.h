@@ -23,6 +23,13 @@ lv_obj_t *widget_row(lv_obj_t *list, const char *label, lv_obj_t **value,
 // Mark a row as the selected or current one.
 void widget_row_set_selected(lv_obj_t *row, bool selected);
 
+// Settings-style row with a label and an LVGL switch on the right (`toggle` receives the switch).
+lv_obj_t *widget_toggle_row(lv_obj_t *list, const char *label, lv_obj_t **toggle,
+                            lv_event_cb_t cb, void *user_data);
+
+void widget_toggle_set(lv_obj_t *toggle, bool on);
+bool widget_toggle_get(lv_obj_t *toggle);
+
 // Rounded button with a text label. `accent` draws it as the primary action.
 lv_obj_t *widget_button(lv_obj_t *parent, const char *text, bool accent, lv_event_cb_t cb, void *user_data);
 

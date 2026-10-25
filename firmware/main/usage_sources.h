@@ -21,4 +21,7 @@ bool usage_sources_enabled(int index);
 // Flip one source (0 Claude, 1 Codex, 2 Cursor). Saves to NVS.
 void usage_sources_toggle(int index);
 
+// Turn one source on or off. Saves to NVS when the mask changes.
+void usage_sources_set_enabled(int index, bool enabled);
+
 void usage_sources_on_change(void (*callback)(void));

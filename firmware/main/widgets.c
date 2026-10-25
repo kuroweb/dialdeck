@@ -74,6 +74,63 @@ void widget_row_set_selected(lv_obj_t *row, bool selected)
     lv_obj_set_style_bg_color(row, selected ? theme_accent() : theme_button_dim(), 0);
 }
 
+static void style_toggle(lv_obj_t *sw)
+{
+    lv_obj_set_size(sw, 44, 24);
+    lv_obj_set_style_radius(sw, 12, LV_PART_MAIN);
+    lv_obj_set_style_radius(sw, 12, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(sw, theme_button(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(sw, theme_accent(), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(sw, LV_RADIUS_CIRCLE, LV_PART_KNOB);
+    lv_obj_set_style_bg_color(sw, theme_text(), LV_PART_KNOB);
+    lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(sw, -3, LV_PART_KNOB);
+}
+
+lv_obj_t *widget_toggle_row(lv_obj_t *list, const char *label, lv_obj_t **toggle,
+                            lv_event_cb_t cb, void *user_data)
+{
+    lv_obj_t *row = lv_obj_create(list);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_size(row, LV_PCT(100), 42);
+    lv_obj_set_style_pad_hor(row, 10, 0);
+    lv_obj_set_clickable(row, false);
+    lv_obj_set_event_bubble(row, true);
+
+    lv_obj_t *name = lv_label_create(row);
+    lv_label_set_text(name, label);
+    lv_obj_set_style_text_font(name, THEME_FONT_BODY, 0);
+    lv_obj_set_style_text_color(name, theme_text(), 0);
+    lv_obj_align(name, LV_ALIGN_LEFT_MID, 0, 0);
+
+    lv_obj_t *sw = lv_switch_create(row);
+    style_toggle(sw);
+    lv_obj_align(sw, LV_ALIGN_RIGHT_MID, 0, 0);
+    if (toggle != NULL) {
+        *toggle = sw;
+    }
+    if (cb != NULL) {
+        lv_obj_add_event_cb(sw, cb, LV_EVENT_VALUE_CHANGED, user_data);
+    }
+    return row;
+}
+
+void widget_toggle_set(lv_obj_t *toggle, bool on)
+{
+    if (on) {
+        lv_obj_add_state(toggle, LV_STATE_CHECKED);
+    } else {
+        lv_obj_clear_state(toggle, LV_STATE_CHECKED);
+    }
+}
+
+bool widget_toggle_get(lv_obj_t *toggle)
+{
+    return lv_obj_has_state(toggle, LV_STATE_CHECKED);
+}
+
 lv_obj_t *widget_button(lv_obj_t *parent, const char *text, bool accent, lv_event_cb_t cb, void *user_data)
 {
     lv_obj_t *btn = lv_button_create(parent);

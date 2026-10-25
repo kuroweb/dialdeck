@@ -71,11 +71,17 @@ void usage_sources_toggle(int index)
     if (index < 0 || index >= USAGE_SOURCE_COUNT) {
         return;
     }
-    s_mask ^= (uint8_t)(1 << index);
-    save_mask();
-    if (s_on_change != NULL) {
-        s_on_change();
+    usage_sources_set_enabled(index, !usage_sources_enabled(index));
+}
+
+void usage_sources_set_enabled(int index, bool enabled)
+{
+    if (index < 0 || index >= USAGE_SOURCE_COUNT) {
+        return;
     }
+    const uint8_t bit = (uint8_t)(1 << index);
+    const uint8_t next = enabled ? (s_mask | bit) : (s_mask & ~bit);
+    usage_sources_set_mask(next);
 }
 
 void usage_sources_on_change(void (*callback)(void))

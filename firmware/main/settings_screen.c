@@ -68,7 +68,7 @@ static lv_obj_t *s_battery_level;
 static lv_obj_t *s_battery_voltage;
 static lv_obj_t *s_battery_power;
 static lv_obj_t *s_usage_rows[USAGE_SOURCE_COUNT];
-static lv_obj_t *s_usage_states[USAGE_SOURCE_COUNT];
+static lv_obj_t *s_usage_switches[USAGE_SOURCE_COUNT];
 static const char *const s_usage_names[USAGE_SOURCE_COUNT] = { "Claude", "Codex", "Cursor" };
 static int s_selected;
 static setting_group_t s_group;
@@ -80,7 +80,7 @@ static lv_obj_t *s_sidebar;
 #define SIDEBAR_VIEW_HEIGHT 186
 
 static void refresh_usage_sources(void);
-static void on_usage_tap(lv_event_t *e);
+static void on_usage_switch(lv_event_t *e);
 static void scroll_group_into_view(setting_group_t group);
 static bool group_uses_value_knob(void);
 
@@ -201,7 +201,7 @@ static void show_group(setting_group_t group)
     }
     for (int i = 0; i < USAGE_SOURCE_COUNT; i++) {
         s_usage_rows[i] = NULL;
-        s_usage_states[i] = NULL;
+        s_usage_switches[i] = NULL;
     }
 
     for (int i = 0; i < GROUP_COUNT; i++) {
@@ -250,12 +250,11 @@ static void show_group(setting_group_t group)
         return;
     }
     if (group == GROUP_USAGE) {
-        lv_label_set_text(s_hint, "Tap to turn a source on or off");
+        lv_label_set_text(s_hint, "Turn off agents you do not use");
         for (int i = 0; i < USAGE_SOURCE_COUNT; i++) {
-            s_usage_rows[i] = widget_row(s_list, s_usage_names[i], &s_usage_states[i], on_usage_tap,
-                                         LV_EVENT_SHORT_CLICKED, (void *)(intptr_t)i);
-            style_detail_row(s_usage_rows[i], true);
-            lv_obj_set_height(s_usage_rows[i], 42);
+            s_usage_rows[i] = widget_toggle_row(s_list, s_usage_names[i], &s_usage_switches[i],
+                                                on_usage_switch, (void *)(intptr_t)i);
+            style_detail_row(s_usage_rows[i], false);
         }
         refresh_usage_sources();
         return;
@@ -352,18 +351,18 @@ static void refresh_battery(void)
 static void refresh_usage_sources(void)
 {
     for (int i = 0; i < USAGE_SOURCE_COUNT; i++) {
-        if (s_usage_states[i] == NULL) {
+        if (s_usage_switches[i] == NULL) {
             continue;
         }
-        lv_label_set_text(s_usage_states[i], usage_sources_enabled(i) ? "On" : "Off");
+        widget_toggle_set(s_usage_switches[i], usage_sources_enabled(i));
     }
 }
 
-static void on_usage_tap(lv_event_t *e)
+static void on_usage_switch(lv_event_t *e)
 {
     const int index = (int)(intptr_t)lv_event_get_user_data(e);
-    usage_sources_toggle(index);
-    refresh_usage_sources();
+    const bool on = widget_toggle_get(lv_event_get_target(e));
+    usage_sources_set_enabled(index, on);
     config_service_notify_usage_sources();
 }
 
