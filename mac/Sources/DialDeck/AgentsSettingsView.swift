@@ -31,7 +31,7 @@ struct AgentsSettingsView: View {
             } header: {
                 Text("Usage sources")
             } footer: {
-                Text("Turn off agents that are not installed on this Mac. They are omitted from the picker and from tapping the device center.")
+                Text("Turn off agents that are not installed on this Mac. The device Settings → Usage screen uses the same list when connected.")
                     .foregroundStyle(.secondary)
             }
 

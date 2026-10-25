@@ -9,3 +9,6 @@ void config_service_register(void);
 
 // Ask the Mac app to act on an agent (agent_action_t). Returns false when no host is connected.
 bool config_service_send_action(int action, const char *agent_id);
+
+// Tell the Mac app the usage-source mask changed on the device. Returns false when no host is connected.
+bool config_service_notify_usage_sources(void);

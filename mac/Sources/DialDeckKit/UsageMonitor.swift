@@ -19,6 +19,30 @@ public enum UsageProvider: String, CaseIterable, Identifiable, Sendable {
         case .cursor: "Cursor"
         }
     }
+
+    /// Bit in the usage_sources GATT byte (protocol 5).
+    public var sourceBit: UInt8? {
+        switch self {
+        case .claude: 1 << 0
+        case .codex: 1 << 1
+        case .cursor: 1 << 2
+        case .off: nil
+        }
+    }
+
+    public static func enabledProviders(from mask: UInt8) -> Set<UsageProvider> {
+        Set(configurable.filter { provider in
+            guard let bit = provider.sourceBit else { return false }
+            return mask & bit != 0
+        })
+    }
+
+    public static func mask(from enabled: Set<UsageProvider>) -> UInt8 {
+        configurable.reduce(UInt8(0)) { partial, provider in
+            guard enabled.contains(provider), let bit = provider.sourceBit else { return partial }
+            return partial | bit
+        }
+    }
 }
 
 /// One limit window of a plan, such as Claude's five hours.
@@ -74,6 +98,7 @@ public final class UsageMonitor: ObservableObject {
     private var nextFetch: [UsageProvider: Date] = [:]
     private var backoff: [UsageProvider: TimeInterval] = [:]
     private var fetching: Set<UsageProvider> = []
+    private var applyingDeviceMask = false
 
     public init(link: DeviceLink) {
         self.link = link
@@ -85,6 +110,7 @@ public final class UsageMonitor: ObservableObject {
         }
         provider = chosen
         link.onNextUsage = { [weak self] in self?.showNext() }
+        link.onUsageSourcesMask = { [weak self] in self?.applyEnabledMaskFromDevice($0) }
     }
 
     public func isProviderEnabled(_ provider: UsageProvider) -> Bool {
@@ -104,6 +130,21 @@ public final class UsageMonitor: ObservableObject {
         if !enabled, self.provider == provider {
             self.provider = .off
         }
+        if !applyingDeviceMask {
+            link.writeUsageSources(UsageProvider.mask(from: set))
+        }
+    }
+
+    /// Device settings or a GATT read/notify replaced the mask (protocol 5).
+    public func applyEnabledMaskFromDevice(_ mask: UInt8) {
+        applyingDeviceMask = true
+        let set = UsageProvider.enabledProviders(from: mask)
+        enabledProviders = set
+        UserDefaults.standard.set(set.map(\.rawValue).sorted(), forKey: Self.enabledProvidersKey)
+        if provider != .off, !set.contains(provider) {
+            provider = .off
+        }
+        applyingDeviceMask = false
     }
 
     private static func loadEnabledProviders() -> Set<UsageProvider> {

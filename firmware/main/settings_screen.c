@@ -7,8 +7,10 @@
 #include "esp_lvgl_port.h"
 #include "host_slots.h"
 #include "screen.h"
+#include "config_service.h"
 #include "settings.h"
 #include "theme.h"
+#include "usage_sources.h"
 #include "widgets.h"
 
 typedef enum {
@@ -17,10 +19,11 @@ typedef enum {
     GROUP_DISPLAY,
     GROUP_BATTERY,
     GROUP_BLUETOOTH,
+    GROUP_USAGE,
     GROUP_COUNT,
 } setting_group_t;
 
-static const char *const s_group_names[GROUP_COUNT] = { "Pointer", "Scroll", "Display", "Battery", "BT" };
+static const char *const s_group_names[GROUP_COUNT] = { "Pointer", "Scroll", "Display", "Battery", "BT", "Usage" };
 
 typedef enum {
     FMT_X100,
@@ -64,8 +67,14 @@ static lv_obj_t *s_hint;
 static lv_obj_t *s_battery_level;
 static lv_obj_t *s_battery_voltage;
 static lv_obj_t *s_battery_power;
+static lv_obj_t *s_usage_rows[USAGE_SOURCE_COUNT];
+static lv_obj_t *s_usage_states[USAGE_SOURCE_COUNT];
+static const char *const s_usage_names[USAGE_SOURCE_COUNT] = { "Claude", "Codex", "Cursor" };
 static int s_selected;
 static setting_group_t s_group;
+
+static void refresh_usage_sources(void);
+static void on_usage_tap(lv_event_t *e);
 
 static void style_detail_row(lv_obj_t *row, bool clickable)
 {
@@ -182,6 +191,10 @@ static void show_group(setting_group_t group)
         s_host_states[i] = NULL;
         s_host_dots[i] = NULL;
     }
+    for (int i = 0; i < USAGE_SOURCE_COUNT; i++) {
+        s_usage_rows[i] = NULL;
+        s_usage_states[i] = NULL;
+    }
 
     for (int i = 0; i < GROUP_COUNT; i++) {
         lv_obj_set_style_border_width(s_group_rows[i], i == group ? 3 : 0, 0);
@@ -225,6 +238,17 @@ static void show_group(setting_group_t group)
             lv_obj_add_event_cb(s_host_rows[i], on_host_hold, LV_EVENT_LONG_PRESSED, (void *)(intptr_t)i);
         }
         refresh_hosts();
+        return;
+    }
+    if (group == GROUP_USAGE) {
+        lv_label_set_text(s_hint, "Tap to turn a source on or off");
+        for (int i = 0; i < USAGE_SOURCE_COUNT; i++) {
+            s_usage_rows[i] = widget_row(s_list, s_usage_names[i], &s_usage_states[i], on_usage_tap,
+                                         LV_EVENT_SHORT_CLICKED, (void *)(intptr_t)i);
+            style_detail_row(s_usage_rows[i], true);
+            lv_obj_set_height(s_usage_rows[i], 42);
+        }
+        refresh_usage_sources();
         return;
     }
 
@@ -303,6 +327,24 @@ static void refresh_battery(void)
     lv_label_set_text(s_battery_power, mv < 0 ? "--" : external ? "External" : "Battery");
 }
 
+static void refresh_usage_sources(void)
+{
+    for (int i = 0; i < USAGE_SOURCE_COUNT; i++) {
+        if (s_usage_states[i] == NULL) {
+            continue;
+        }
+        lv_label_set_text(s_usage_states[i], usage_sources_enabled(i) ? "On" : "Off");
+    }
+}
+
+static void on_usage_tap(lv_event_t *e)
+{
+    const int index = (int)(intptr_t)lv_event_get_user_data(e);
+    usage_sources_toggle(index);
+    refresh_usage_sources();
+    config_service_notify_usage_sources();
+}
+
 static void on_host_tap(lv_event_t *e)
 {
     const int slot = (int)(intptr_t)lv_event_get_user_data(e);
@@ -353,6 +395,13 @@ static void knob(int detents)
 }
 
 // Runs on the NimBLE host task when the Mac app replaces the settings.
+static void on_usage_sources_change(void)
+{
+    lvgl_port_lock(0);
+    refresh_usage_sources();
+    lvgl_port_unlock();
+}
+
 static void on_settings_change(void)
 {
     lvgl_port_lock(0);
@@ -371,6 +420,8 @@ static void tick(void)
         refresh_hosts();
     } else if (s_group == GROUP_BATTERY) {
         refresh_battery();
+    } else if (s_group == GROUP_USAGE) {
+        refresh_usage_sources();
     }
 }
 
@@ -404,6 +455,7 @@ static void create(lv_obj_t *scr)
     show_group(GROUP_POINTER);
 
     settings_on_change(on_settings_change);
+    usage_sources_on_change(on_usage_sources_change);
 }
 
 const screen_def_t settings_screen = {

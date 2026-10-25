@@ -22,8 +22,9 @@ public final class DeviceLink: NSObject, ObservableObject {
     static let agentsUUID = CBUUID(string: "98D34630-2EB8-4022-BA87-4F253E72A24B")
     static let actionUUID = CBUUID(string: "98D34631-2EB8-4022-BA87-4F253E72A24B")
     static let usageUUID = CBUUID(string: "98D34632-2EB8-4022-BA87-4F253E72A24B")
+    static let usageSourcesUUID = CBUUID(string: "98D34633-2EB8-4022-BA87-4F253E72A24B")
     static let hidServiceUUID = CBUUID(string: "1812")
-    static let supportedProtocol: UInt8 = 4
+    static let supportedProtocols: Set<UInt8> = [4, 5]
 
     @Published public private(set) var state: State = .searching
     @Published public private(set) var slots: [DeckSlot] = []
@@ -35,6 +36,8 @@ public final class DeviceLink: NSObject, ObservableObject {
     public var onAgentAction: ((AgentAction, String) -> Void)?
     /// Called when the device asks to show the next usage provider (its center was tapped).
     public var onNextUsage: (() -> Void)?
+    /// Called when the device changes which usage sources are enabled (protocol 5).
+    public var onUsageSourcesMask: ((UInt8) -> Void)?
     static let nextUsageAction: UInt8 = 6
 
     private var central: CBCentralManager!
@@ -45,6 +48,8 @@ public final class DeviceLink: NSObject, ObservableObject {
     private var usageCharacteristic: CBCharacteristic? {
         didSet { usageSupported = usageCharacteristic != nil }
     }
+    private var usageSourcesCharacteristic: CBCharacteristic?
+    private var protocolVersion: UInt8 = 4
     private var pendingSettings: DeviceSettings?
     private var retryTimer: Timer?
     private var pendingWrites: [(Int, DeckSlot)] = []
@@ -84,6 +89,12 @@ public final class DeviceLink: NSObject, ObservableObject {
         peripheral.writeValue(data, for: usageCharacteristic, type: .withResponse)
     }
 
+    /// Which agents may appear in the usage picker and in center-tap cycling (protocol 5).
+    public func writeUsageSources(_ mask: UInt8) {
+        guard let peripheral, let usageSourcesCharacteristic else { return }
+        peripheral.writeValue(Data([mask & 0x07]), for: usageSourcesCharacteristic, type: .withResponse)
+    }
+
     /// Write one assignment. The device saves it and redraws the button.
     public func write(_ slot: DeckSlot, at index: Int) {
         guard let peripheral, let deckCharacteristic else { return }
@@ -121,6 +132,8 @@ public final class DeviceLink: NSObject, ObservableObject {
         settingsCharacteristic = nil
         agentsCharacteristic = nil
         usageCharacteristic = nil
+        usageSourcesCharacteristic = nil
+        protocolVersion = 4
         pendingWrites.removeAll()
         pendingSettings = nil
         state = newState
@@ -167,7 +180,8 @@ extension DeviceLink: CBPeripheralDelegate {
                 return
             }
             peripheral.discoverCharacteristics(
-                [Self.infoUUID, Self.deckUUID, Self.settingsUUID, Self.agentsUUID, Self.actionUUID, Self.usageUUID],
+                [Self.infoUUID, Self.deckUUID, Self.settingsUUID, Self.agentsUUID, Self.actionUUID, Self.usageUUID,
+                 Self.usageSourcesUUID],
                 for: service)
         }
     }
@@ -189,7 +203,11 @@ extension DeviceLink: CBPeripheralDelegate {
             // Optional: macOS may keep the service as it was before usage was added until the
             // device is paired again.
             usageCharacteristic = characteristics.first(where: { $0.uuid == Self.usageUUID })
+            usageSourcesCharacteristic = characteristics.first(where: { $0.uuid == Self.usageSourcesUUID })
             peripheral.setNotifyValue(true, for: action)
+            if let usageSources = usageSourcesCharacteristic {
+                peripheral.setNotifyValue(true, for: usageSources)
+            }
             peripheral.readValue(for: info)
         }
     }
@@ -203,11 +221,19 @@ extension DeviceLink: CBPeripheralDelegate {
             let value = characteristic.value ?? Data()
             switch characteristic.uuid {
             case Self.infoUUID:
-                guard value.first == Self.supportedProtocol else {
+                guard let version = value.first, Self.supportedProtocols.contains(version) else {
                     reset(.failed("Unsupported firmware protocol \(value.first.map(String.init) ?? "?")."))
                     return
                 }
+                protocolVersion = version
+                if protocolVersion >= 5, usageSourcesCharacteristic == nil {
+                    reset(.failed("The config service is incomplete. Update the firmware."))
+                    return
+                }
                 reload()
+                if let usageSources = usageSourcesCharacteristic {
+                    peripheral.readValue(for: usageSources)
+                }
             case Self.deckUUID:
                 slots = stride(from: 0, to: value.count - DeckSlot.wireSize + 1, by: DeckSlot.wireSize).compactMap {
                     DeckSlot(wire: value.subdata(in: $0..<$0 + DeckSlot.wireSize))
@@ -215,6 +241,8 @@ extension DeviceLink: CBPeripheralDelegate {
                 state = .ready
             case Self.settingsUUID:
                 settings = DeviceSettings(wire: value)
+            case Self.usageSourcesUUID:
+                onUsageSourcesMask?(value.first ?? 0)
             case Self.actionUUID:
                 // [action, id length, id]
                 if value.first == Self.nextUsageAction {
@@ -232,7 +260,8 @@ extension DeviceLink: CBPeripheralDelegate {
 
     public nonisolated func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         MainActor.assumeIsolated {
-            if characteristic.uuid == Self.agentsUUID || characteristic.uuid == Self.usageUUID {
+            if characteristic.uuid == Self.agentsUUID || characteristic.uuid == Self.usageUUID
+                || characteristic.uuid == Self.usageSourcesUUID {
                 // A refused value is replaced by the next one; it must not break the editor.
                 if let error { NSLog("DialDeck: \(characteristic.uuid) write failed: \(error.localizedDescription)") }
                 return

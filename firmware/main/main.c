@@ -13,6 +13,7 @@
 #include "touchpad.h"
 #include "ui.h"
 #include "usage.h"
+#include "usage_sources.h"
 
 static void nvs_init(void)
 {
@@ -86,6 +87,7 @@ void app_main(void)
     host_slots_load();
     agents_init();
     usage_init();
+    usage_sources_load();
 
     display_init();
     display_set_brightness(settings()->brightness);
