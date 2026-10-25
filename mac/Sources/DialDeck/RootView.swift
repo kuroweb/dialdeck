@@ -1,44 +1,99 @@
 import DialDeckKit
 import SwiftUI
 
-/// The settings window: one tab per part of the device, each sized to its content, with the
-/// connection shown along the bottom.
+private enum SettingsPage: String, CaseIterable, Identifiable {
+    case agents = "Agents"
+    case touchpad = "Touchpad"
+    case deck = "Deck"
+
+    var id: Self { self }
+
+    var symbol: String {
+        switch self {
+        case .agents: "terminal"
+        case .touchpad: "hand.point.up.left"
+        case .deck: "circle.grid.cross"
+        }
+    }
+}
+
+/// The settings window: select a device page in the sidebar and edit it on the right.
 struct RootView: View {
     @ObservedObject var link: DeviceLink
     @ObservedObject var herdr: HerdrBridge
     @ObservedObject var usage: UsageMonitor
+    @State private var selection: SettingsPage = .agents
+    @FocusState private var focusedPage: SettingsPage?
 
     var body: some View {
-        TabView {
-            page(width: 480, height: 330) {
-                AgentsSettingsView(link: link, herdr: herdr, usage: usage)
-            }
-            .tabItem { Label("Agents", systemImage: "terminal") }
-
-            page(width: 480, height: 430) {
-                deviceContent { TouchpadSettingsView(link: link) }
-            }
-            .tabItem { Label("Touchpad", systemImage: "hand.point.up.left") }
-
-            page(width: 700, height: 380) {
-                deviceContent { DeckEditorView(link: link).padding(20) }
-            }
-            .tabItem { Label("Deck", systemImage: "circle.grid.cross") }
-        }
-    }
-
-    private func page<Content: View>(width: CGFloat, height: CGFloat,
-                                     @ViewBuilder content: () -> Content) -> some View {
-        VStack(spacing: 0) {
-            content()
-                .frame(width: width, height: height)
+        HStack(spacing: 0) {
+            sidebar
             Divider()
-            ConnectionBar(link: link)
+            VStack(spacing: 0) {
+                Group {
+                    switch selection {
+                    case .agents:
+                        AgentsSettingsView(link: link, herdr: herdr, usage: usage)
+                    case .touchpad:
+                        deviceContent { TouchpadSettingsView(link: link) }
+                    case .deck:
+                        deviceContent { DeckEditorView(link: link).padding(20) }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                Divider()
+                ConnectionBar(link: link)
+            }
         }
-        .frame(width: width)
+        .frame(width: 880, height: 540)
     }
 
-    /// Tabs that read and write the device need it connected.
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Label("DialDeck", systemImage: "dial.medium")
+                .font(.headline)
+                .padding(.horizontal, 18)
+                .frame(height: 58)
+
+            Text("DEVICE")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 18)
+                .padding(.bottom, 8)
+
+            VStack(spacing: 3) {
+                ForEach(SettingsPage.allCases) { page in
+                    Button {
+                        selection = page
+                        focusedPage = page
+                    } label: {
+                        Label(page.rawValue, systemImage: page.symbol)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 12)
+                            .frame(height: 34)
+                            .background(selection == page ? Color.primary.opacity(0.12) : .clear,
+                                        in: RoundedRectangle(cornerRadius: 8))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(SidebarButtonStyle())
+                    .focused($focusedPage, equals: page)
+                    .focusEffectDisabled()
+                    // Button actions run on mouse-up; switch pages as soon as the press starts.
+                    .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { _ in
+                        if selection != page { selection = page }
+                    })
+                }
+            }
+            .padding(.horizontal, 10)
+
+            Spacer()
+        }
+        .frame(width: 190)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    /// Pages that read and write the device need it connected.
     @ViewBuilder
     private func deviceContent<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         if link.state == .ready, !link.slots.isEmpty {
@@ -60,6 +115,12 @@ struct RootView: View {
         case .ready: "Reading the device…"
         case .failed(let message): message
         }
+    }
+}
+
+private struct SidebarButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
     }
 }
 

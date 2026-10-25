@@ -41,9 +41,9 @@ Swift Package。macOS 14、Swift ツール 6.0、言語モード 5。Xcode の�
 | ターゲット | 役割 |
 | --- | --- |
 | `DialDeckKit` | GATT、ファームと同じバイト列、herdr のソケット、プランの使用量の取得（`UsageMonitor.swift`） |
-| `DialDeck` | SwiftUI のメニューバー常駐アプリと設定ウィンドウ。タブは Agents、Touchpad、Deck |
+| `DialDeck` | SwiftUI のメニューバー常駐アプリと設定ウィンドウ。サイドバーは Agents、Touchpad、Deck |
 
-入口は `mac/Sources/DialDeck/DialDeckApp.swift`。メニューは `MenuContent.swift` で、接続、herdr、使用量の状態と、設定ウィンドウ、ログイン時の起動、終了を置く。ウィンドウを閉じても herdr と使用量は送り続ける。ボタンの編集は `DeckEditorView.swift`、タッチパッドと明るさは `TouchpadSettingsView.swift`。使用量を出す agent（Claude、Codex、Cursor）は `AgentsSettingsView.swift`（Agents タブ）で選ぶ。デバイスの Agents 画面の中央をタップしても次へ切り替わる。
+入口は `mac/Sources/DialDeck/DialDeckApp.swift`。メニューは `MenuContent.swift` で、接続、herdr、使用量の状態と、設定ウィンドウ、ログイン時の起動、終了を置く。ウィンドウを閉じても herdr と使用量は送り続ける。ボタンの編集は `DeckEditorView.swift`、タッチパッドと明るさは `TouchpadSettingsView.swift`。使用量を出す agent（Claude、Codex、Cursor）は `AgentsSettingsView.swift`（Agents ページ）で選ぶ。デバイスの Agents 画面の中央をタップしても次へ切り替わる。
 
 ビルドは `mac/scripts/build-app.sh`。CoreBluetooth には Bluetooth の使用目的を書いた Info.plist が要るので、SwiftPM の実行ファイルを `.app` に包んで ad hoc 署名する。
 
