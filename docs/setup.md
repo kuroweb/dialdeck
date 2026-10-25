@@ -2,6 +2,8 @@
 
 リポジトリの取得から、ファームウェアの書き込みと Mac アプリのインストールまで。
 
+日々の開発フローとコマンドは [development.md](development.md) を参照する。
+
 ESP-IDF は公式インストーラー EIM（ESP-IDF Installation Manager）で入れる。EIM 自体は Homebrew の tap から入れる。ESP-IDF 本体とツールチェーンは、EIM が `~/.espressif` 配下に置く。
 
 ## 1. リポジトリを取得する
@@ -82,10 +84,8 @@ idf.py build
 初めて書き込むと純正ファームが消える。先に [純正ファームウェアのバックアップ](stock-firmware-backup.md) を取る。
 
 ```
-idf.py -p /dev/cu.usbmodem* flash monitor
+idf.py -p /dev/cu.usbmodem* flash
 ```
-
-`monitor` を抜けるには `Ctrl+]`。
 
 ## 9. Mac アプリを入れる
 

@@ -43,6 +43,7 @@ flowchart LR
 | 文書 | 内容 |
 | --- | --- |
 | [docs/setup.md](docs/setup.md) | リポジトリの取得、ESP-IDF、ビルド、書き込み、Mac アプリ |
+| [docs/development.md](docs/development.md) | 日々の開発フローとビルド・書き込みコマンド |
 | [docs/architecture.md](docs/architecture.md) | 通信内容とファーム、Mac アプリのファイル構成 |
 | [docs/editor.md](docs/editor.md) | Cursor に何を入れ、どの警告を見るか |
 | [docs/config-protocol.md](docs/config-protocol.md) | GATT のバイト列 |
