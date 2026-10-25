@@ -30,7 +30,8 @@ public struct UsageWindow: Equatable, Sendable {
 /// values kept on the device in the meantime.
 ///
 /// Claude: the usage endpoint Claude Code's /usage reads, with the OAuth token Claude Code keeps
-/// in the login keychain. Codex: the rate limits Codex writes into its newest session log.
+/// in the login keychain. Codex: the newest readable `rate_limits` on a session log's token_count
+/// events (rows with empty windows after a limit are skipped for an older row in the same file).
 /// Cursor: the usage summary of cursor.com, with the token Cursor keeps in its state database.
 /// None of these are public APIs; when one fails before any value was read, the device shows the
 /// windows as unknown.
@@ -264,26 +265,40 @@ public final class UsageMonitor: ObservableObject {
             .filter { $0.pathExtension == "jsonl" }
             .map { ($0, (try? $0.resourceValues(forKeys: Set(keys)).contentModificationDate) ?? .distantPast) }
             .sorted { $0.1 > $1.1 }
-        for (file, _) in files.prefix(5) {
+        for (file, _) in files.prefix(8) {
             if let limits = lastRateLimits(in: file) {
-                return [("primary", "5h"), ("secondary", "7d")].map { key, fallback in
-                    let window = limits[key] as? [String: Any]
-                    let label = (window?["window_minutes"] as? Int).map(windowLabel) ?? fallback
-                    let resetsAt = (window?["resets_at"] as? Double).map { Date(timeIntervalSince1970: $0) }
-                    // The log is only as new as the last Codex turn; a window that has reset since is empty.
-                    if let resetsAt, resetsAt < Date() {
-                        return UsageWindow(label: label, percent: 0, resetsAt: nil)
-                    }
-                    return UsageWindow(label: label,
-                                       percent: (window?["used_percent"] as? Double).map { Int($0.rounded()) },
-                                       resetsAt: resetsAt)
-                }
+                return codexUsageWindows(from: limits)
             }
         }
         throw FetchError("No Codex session with rate limits")
     }
 
-    /// The rate limits of the last token count in the tail of a session log.
+    /// Skip token_count rows where Codex cleared the windows (for example after a limit), so an older row is used.
+    private nonisolated static func codexLimitsAreReadable(_ limits: [String: Any]) -> Bool {
+        for key in ["primary", "secondary"] {
+            if let window = limits[key] as? [String: Any], window["used_percent"] != nil {
+                return true
+            }
+        }
+        return false
+    }
+
+    private nonisolated static func codexUsageWindows(from limits: [String: Any]) -> [UsageWindow] {
+        [("primary", "5h"), ("secondary", "7d")].map { key, fallback in
+            let window = limits[key] as? [String: Any]
+            let label = (window?["window_minutes"] as? Int).map(windowLabel) ?? fallback
+            let resetsAt = (window?["resets_at"] as? Double).map { Date(timeIntervalSince1970: $0) }
+            // No new token_count after the window rolled; do not guess 0% from a stale log.
+            if let resetsAt, resetsAt < Date() {
+                return UsageWindow(label: label, percent: nil, resetsAt: nil)
+            }
+            return UsageWindow(label: label,
+                               percent: (window?["used_percent"] as? Double).map { Int($0.rounded()) },
+                               resetsAt: resetsAt)
+        }
+    }
+
+    /// The newest readable rate_limits in the tail of a session log.
     private nonisolated static func lastRateLimits(in file: URL) -> [String: Any]? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
         defer { try? handle.close() }
@@ -294,7 +309,8 @@ public final class UsageMonitor: ObservableObject {
             where line.contains("\"rate_limits\"") {
             if let json = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
                let payload = json["payload"] as? [String: Any],
-               let limits = payload["rate_limits"] as? [String: Any] {
+               let limits = payload["rate_limits"] as? [String: Any],
+               codexLimitsAreReadable(limits) {
                 return limits
             }
         }
