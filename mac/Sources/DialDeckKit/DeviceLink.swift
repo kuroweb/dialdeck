@@ -31,6 +31,8 @@ public final class DeviceLink: NSObject, ObservableObject {
     @Published public private(set) var settings: DeviceSettings?
     /// False when macOS still has the device's services as they were before usage was added.
     @Published public private(set) var usageSupported = false
+    /// False when the usage_sources characteristic is missing (re-pair in System Settings → Bluetooth).
+    @Published public private(set) var usageSourcesSupported = false
 
     /// Called when the device asks to act on a herdr agent (see AgentAction).
     public var onAgentAction: ((AgentAction, String) -> Void)?
@@ -48,7 +50,9 @@ public final class DeviceLink: NSObject, ObservableObject {
     private var usageCharacteristic: CBCharacteristic? {
         didSet { usageSupported = usageCharacteristic != nil }
     }
-    private var usageSourcesCharacteristic: CBCharacteristic?
+    private var usageSourcesCharacteristic: CBCharacteristic? {
+        didSet { usageSourcesSupported = usageSourcesCharacteristic != nil }
+    }
     private var protocolVersion: UInt8 = 4
     private var pendingSettings: DeviceSettings?
     private var retryTimer: Timer?
@@ -133,6 +137,7 @@ public final class DeviceLink: NSObject, ObservableObject {
         agentsCharacteristic = nil
         usageCharacteristic = nil
         usageSourcesCharacteristic = nil
+        usageSourcesSupported = false
         protocolVersion = 4
         pendingWrites.removeAll()
         pendingSettings = nil
@@ -179,10 +184,8 @@ extension DeviceLink: CBPeripheralDelegate {
                 reset(.failed("The device has no config service. Update its firmware."))
                 return
             }
-            peripheral.discoverCharacteristics(
-                [Self.infoUUID, Self.deckUUID, Self.settingsUUID, Self.agentsUUID, Self.actionUUID, Self.usageUUID,
-                 Self.usageSourcesUUID],
-                for: service)
+            // Discover every characteristic so a bonded Mac sees new ones (e.g. usage_sources) without re-pairing.
+            peripheral.discoverCharacteristics(nil, for: service)
         }
     }
 
@@ -226,10 +229,6 @@ extension DeviceLink: CBPeripheralDelegate {
                     return
                 }
                 protocolVersion = version
-                if protocolVersion >= 5, usageSourcesCharacteristic == nil {
-                    reset(.failed("The config service is incomplete. Update the firmware."))
-                    return
-                }
                 reload()
                 if let usageSources = usageSourcesCharacteristic {
                     peripheral.readValue(for: usageSources)

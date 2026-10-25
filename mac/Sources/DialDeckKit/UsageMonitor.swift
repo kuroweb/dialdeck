@@ -130,7 +130,7 @@ public final class UsageMonitor: ObservableObject {
         if !enabled, self.provider == provider {
             self.provider = .off
         }
-        if !applyingDeviceMask {
+        if !applyingDeviceMask, link.usageSourcesSupported {
             link.writeUsageSources(UsageProvider.mask(from: set))
         }
     }

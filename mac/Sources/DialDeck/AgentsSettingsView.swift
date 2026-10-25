@@ -31,8 +31,15 @@ struct AgentsSettingsView: View {
             } header: {
                 Text("Usage sources")
             } footer: {
-                Text("Turn off agents that are not installed on this Mac. The device Settings → Usage screen uses the same list when connected.")
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Turn off agents that are not installed on this Mac. The device Settings → Usage screen uses the same list when connected.")
+                    if link.state == .ready, !link.usageSourcesSupported {
+                        Label("Usage toggles on the device will not sync. Remove DialDeck in System Settings → Bluetooth and pair again.",
+                              systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                    }
+                }
+                .foregroundStyle(.secondary)
             }
 
             Section {
