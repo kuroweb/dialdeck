@@ -72,9 +72,17 @@ static lv_obj_t *s_usage_states[USAGE_SOURCE_COUNT];
 static const char *const s_usage_names[USAGE_SOURCE_COUNT] = { "Claude", "Codex", "Cursor" };
 static int s_selected;
 static setting_group_t s_group;
+static lv_obj_t *s_sidebar;
+
+// Left column: six groups at 30 px + 6 px gap need more than the round screen shows.
+#define SIDEBAR_ROW_HEIGHT  30
+#define SIDEBAR_ROW_GAP     6
+#define SIDEBAR_VIEW_HEIGHT 186
 
 static void refresh_usage_sources(void);
 static void on_usage_tap(lv_event_t *e);
+static void scroll_group_into_view(setting_group_t group);
+static bool group_uses_value_knob(void);
 
 static void style_detail_row(lv_obj_t *row, bool clickable)
 {
@@ -202,6 +210,7 @@ static void show_group(setting_group_t group)
                                     i == group ? theme_text() : theme_text_muted(), 0);
     }
     lv_label_set_text(s_group_title, s_group_names[group]);
+    scroll_group_into_view(group);
 
     lv_obj_clean(s_list);
     if (group == GROUP_BATTERY) {
@@ -283,6 +292,19 @@ static void show_group(setting_group_t group)
     }
 }
 
+static void scroll_group_into_view(setting_group_t group)
+{
+    if (s_sidebar == NULL || s_group_rows[group] == NULL) {
+        return;
+    }
+    lv_obj_scroll_to_view(s_group_rows[group], LV_ANIM_OFF);
+}
+
+static bool group_uses_value_knob(void)
+{
+    return s_group == GROUP_POINTER || s_group == GROUP_SCROLL || s_group == GROUP_DISPLAY;
+}
+
 static void on_group(lv_event_t *e)
 {
     show_group((setting_group_t)(intptr_t)lv_event_get_user_data(e));
@@ -360,6 +382,17 @@ static void on_host_hold(lv_event_t *e)
 
 static void knob(int detents)
 {
+    if (detents == 0) {
+        return;
+    }
+    if (!group_uses_value_knob()) {
+        int group = (int)s_group + detents;
+        while (group < 0) {
+            group += GROUP_COUNT;
+        }
+        show_group((setting_group_t)(group % GROUP_COUNT));
+        return;
+    }
     if (s_selected < 0) {
         return;
     }
@@ -420,22 +453,24 @@ static void tick(void)
         refresh_hosts();
     } else if (s_group == GROUP_BATTERY) {
         refresh_battery();
-    } else if (s_group == GROUP_USAGE) {
-        refresh_usage_sources();
     }
 }
 
 static void create(lv_obj_t *scr)
 {
     widget_title(scr, "Settings");
-    lv_obj_t *sidebar = widget_list(scr, 0);
-    lv_obj_set_width(sidebar, 88);
-    lv_obj_set_style_pad_row(sidebar, 6, 0);
-    lv_obj_align(sidebar, LV_ALIGN_TOP_LEFT, 38, 100);
+    s_sidebar = widget_list(scr, 0);
+    lv_obj_set_width(s_sidebar, 88);
+    lv_obj_set_height(s_sidebar, SIDEBAR_VIEW_HEIGHT);
+    lv_obj_set_style_pad_row(s_sidebar, SIDEBAR_ROW_GAP, 0);
+    lv_obj_set_scroll_dir(s_sidebar, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(s_sidebar, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scrollable(s_sidebar, true);
+    lv_obj_align(s_sidebar, LV_ALIGN_TOP_LEFT, 38, 100);
     for (int i = 0; i < GROUP_COUNT; i++) {
-        s_group_rows[i] = widget_row(sidebar, s_group_names[i], NULL, on_group,
+        s_group_rows[i] = widget_row(s_sidebar, s_group_names[i], NULL, on_group,
                                      LV_EVENT_PRESSED, (void *)(intptr_t)i);
-        lv_obj_set_height(s_group_rows[i], 30);
+        lv_obj_set_height(s_group_rows[i], SIDEBAR_ROW_HEIGHT);
         lv_obj_set_style_radius(s_group_rows[i], 0, 0);
         lv_obj_set_style_bg_opa(s_group_rows[i], LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_color(s_group_rows[i], theme_accent_text(), 0);
