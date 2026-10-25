@@ -46,13 +46,14 @@ struct RootView: View {
                     }
                     .frame(maxWidth: Self.contentWidth)
                     .frame(maxWidth: .infinity)
-                    .padding(16)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
                 }
                 Divider()
                 ConnectionBar(link: link)
             }
         }
-        .frame(width: Self.sidebarWidth + Self.contentWidth + 32, height: 520)
+        .frame(width: Self.sidebarWidth + Self.contentWidth + 32, height: 600)
     }
 
     private var sidebar: some View {
