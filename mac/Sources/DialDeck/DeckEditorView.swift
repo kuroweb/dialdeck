@@ -62,7 +62,7 @@ private struct DeckPreview: View {
     private func button(index: Int, slot: DeckSlot) -> some View {
         let diameter = index == 0 ? centerButton : ringButton
         return Button { selection = index } label: {
-            Text(displayLabel(slot.label))
+            Text(DeckLabel.display(slot.label, compact: index != 0))
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.white)
                 .lineLimit(1)
@@ -74,12 +74,6 @@ private struct DeckPreview: View {
         }
         .buttonStyle(.plain)
     }
-}
-
-/// The device draws a few labels with its own symbol glyphs, which macOS cannot render.
-func displayLabel(_ label: String) -> String {
-    let symbols: [UInt32: String] = [0xF04B: "▶", 0xF04C: "⏸", 0xF028: "🔊", 0xF027: "🔉", 0xF026: "🔈"]
-    return label.unicodeScalars.map { symbols[$0.value] ?? String($0) }.joined()
 }
 
 private enum ActionKind: String, CaseIterable, Identifiable {
@@ -98,12 +92,19 @@ private struct SlotEditor: View {
     @State private var draft = DeckSlot()
     @State private var kind = ActionKind.none
 
+    private var labelBinding: Binding<String> {
+        Binding(
+            get: { DeckLabel.display(draft.label) },
+            set: { draft.label = DeckLabel.wire(from: $0) }
+        )
+    }
+
     var body: some View {
         Form {
             Section(name) {
-                TextField("Label", text: $draft.label)
+                TextField("Label", text: labelBinding)
                 if !labelFits {
-                    Text("Up to \(DeckSlot.maxLabelBytes) letters, digits or symbols (A-Z only).")
+                    Text("Up to \(DeckSlot.maxLabelBytes) bytes. ASCII text, or ▶ ⏸ 🔊 for device symbols.")
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
