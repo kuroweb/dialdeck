@@ -83,11 +83,9 @@ static lv_obj_t *s_sidebar;
 static void refresh_usage_sources(void);
 static void on_usage_switch(lv_event_t *e);
 static void scroll_group_into_view(setting_group_t group);
-static void scroll_row_into_view(int item_index);
 static lv_coord_t detail_scroll_max(void);
 static void scroll_detail_by(int detents);
 static bool group_uses_value_knob(void);
-static void settings_page(int delta);
 
 static void style_detail_row(lv_obj_t *row, bool clickable)
 {
@@ -163,19 +161,12 @@ static void render_value(int i)
     }
 }
 
-static void scroll_row_into_view(int item_index)
-{
-    if (s_list == NULL || item_index < 0 || s_rows[item_index] == NULL) {
-        return;
-    }
-    lv_obj_scroll_to_view(s_rows[item_index], LV_ANIM_OFF);
-}
-
 static lv_coord_t detail_scroll_max(void)
 {
     if (s_list == NULL) {
         return 0;
     }
+    lv_obj_update_layout(s_list);
     const lv_coord_t content = lv_obj_get_content_height(s_list);
     const lv_coord_t view = lv_obj_get_height(s_list);
     return content > view ? content - view : 0;
@@ -199,15 +190,11 @@ static void scroll_detail_by(int detents)
 
 static void select_row(int i)
 {
-    const bool changed = s_selected != i;
     s_selected = i;
     for (int row = 0; row < ITEM_COUNT; row++) {
         if (s_rows[row] != NULL) {
             set_detail_selected(s_rows[row], row == i);
         }
-    }
-    if (changed) {
-        scroll_row_into_view(i);
     }
 }
 
@@ -229,6 +216,7 @@ static void on_host_hold(lv_event_t *e);
 
 static void show_group(setting_group_t group)
 {
+    const bool new_group = group != s_group;
     s_group = group;
     s_value_edit = false;
     s_battery_level = NULL;
@@ -263,6 +251,9 @@ static void show_group(setting_group_t group)
     scroll_group_into_view(group);
 
     lv_obj_clean(s_list);
+    if (new_group && s_list != NULL) {
+        lv_obj_scroll_to_y(s_list, 0, LV_ANIM_OFF);
+    }
     if (group == GROUP_BATTERY) {
         lv_obj_t *level = widget_row(s_list, "Level", &s_battery_level, NULL, 0, NULL);
         lv_obj_t *voltage = widget_row(s_list, "Voltage", &s_battery_voltage, NULL, 0, NULL);
@@ -336,7 +327,6 @@ static void show_group(setting_group_t group)
         set_detail_selected(s_rows[i], i == s_selected);
         render_value(i);
     }
-    scroll_row_into_view(s_selected);
 }
 
 static void scroll_group_into_view(setting_group_t group)
@@ -354,7 +344,11 @@ static bool group_uses_value_knob(void)
 
 static void on_group(lv_event_t *e)
 {
-    show_group((setting_group_t)(intptr_t)lv_event_get_user_data(e));
+    const setting_group_t group = (setting_group_t)(intptr_t)lv_event_get_user_data(e);
+    if (group == s_group) {
+        return;
+    }
+    show_group(group);
 }
 
 static void refresh_hosts(void)
@@ -425,11 +419,6 @@ static void on_host_tap(lv_event_t *e)
 static void on_host_hold(lv_event_t *e)
 {
     ble_hid_pair_host((int)(intptr_t)lv_event_get_user_data(e));
-}
-
-static void settings_page(int delta)
-{
-    scroll_detail_by(delta);
 }
 
 static void knob(int detents)
@@ -524,30 +513,36 @@ static void create(lv_obj_t *scr)
 {
     widget_title(scr, "Settings");
     s_sidebar = widget_list(scr, 0);
-    lv_obj_set_width(s_sidebar, 88);
+    lv_obj_set_width(s_sidebar, 100);
     lv_obj_set_height(s_sidebar, SIDEBAR_VIEW_HEIGHT);
+    lv_obj_set_style_pad_all(s_sidebar, 0, 0);
     lv_obj_set_style_pad_row(s_sidebar, SIDEBAR_ROW_GAP, 0);
+    lv_obj_set_flex_align(s_sidebar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_set_scroll_dir(s_sidebar, LV_DIR_VER);
+    lv_obj_clear_flag(s_sidebar, LV_OBJ_FLAG_SCROLL_ELASTIC);
     lv_obj_set_scrollbar_mode(s_sidebar, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_scrollable(s_sidebar, true);
-    lv_obj_align(s_sidebar, LV_ALIGN_TOP_LEFT, 38, 100);
+    lv_obj_align(s_sidebar, LV_ALIGN_TOP_LEFT, 34, 100);
     for (int i = 0; i < GROUP_COUNT; i++) {
         s_group_rows[i] = widget_row(s_sidebar, s_group_names[i], NULL, on_group,
-                                     LV_EVENT_PRESSED, (void *)(intptr_t)i);
+                                     LV_EVENT_SHORT_CLICKED, (void *)(intptr_t)i);
         lv_obj_set_height(s_group_rows[i], SIDEBAR_ROW_HEIGHT);
         lv_obj_set_style_radius(s_group_rows[i], 0, 0);
         lv_obj_set_style_bg_opa(s_group_rows[i], LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_color(s_group_rows[i], theme_accent_text(), 0);
         lv_obj_set_style_border_side(s_group_rows[i], LV_BORDER_SIDE_LEFT, 0);
-        lv_obj_set_style_pad_hor(s_group_rows[i], 12, 0);
+        lv_obj_set_style_pad_hor(s_group_rows[i], 10, 0);
+        lv_obj_t *name = lv_obj_get_child(s_group_rows[i], 0);
+        lv_obj_set_width(name, lv_pct(100));
+        lv_label_set_long_mode(name, LV_LABEL_LONG_MODE_DOTS);
     }
 
-    s_list = widget_list(scr, 24);
+    s_list = widget_list(scr, 0);
     lv_obj_set_width(s_list, 192);
     lv_obj_set_height(s_list, DETAIL_VIEW_HEIGHT);
     lv_obj_set_style_pad_row(s_list, 0, 0);
     lv_obj_set_scroll_dir(s_list, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(s_list, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(s_list, LV_OBJ_FLAG_SCROLL_ELASTIC);
     lv_obj_add_flag(s_list, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scrollbar_mode(s_list, LV_SCROLLBAR_MODE_OFF);
     lv_obj_align(s_list, LV_ALIGN_TOP_LEFT, 138, 121);
@@ -567,5 +562,4 @@ const screen_def_t settings_screen = {
     .create = create,
     .knob = knob,
     .tick = tick,
-    .page = settings_page,
 };

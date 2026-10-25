@@ -288,6 +288,9 @@ static void on_nav(lv_event_t *e)
         } else if (s_active == UI_SCREEN_MENU && dy < 0 && is_push_up_start(s_nav_start)) {
             consume_swipe();
             close_menu(s_before_menu);
+        } else if (s_active == UI_SCREEN_SETTINGS) {
+            // Right pane scrolls with touch drag; do not route the swipe to page() or indev_reset().
+            s_nav_swiped = true;
         } else if (s_defs[s_active]->page) {
             consume_swipe();
             s_defs[s_active]->page(dy < 0 ? 1 : -1);
