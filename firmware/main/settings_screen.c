@@ -69,6 +69,7 @@ static lv_obj_t *s_usage_rows[USAGE_SOURCE_COUNT];
 static lv_obj_t *s_usage_switches[USAGE_SOURCE_COUNT];
 static const char *const s_usage_names[USAGE_SOURCE_COUNT] = { "Claude", "Codex", "Cursor" };
 static int s_selected;
+static bool s_value_edit;
 static setting_group_t s_group;
 static lv_obj_t *s_sidebar;
 
@@ -76,13 +77,17 @@ static lv_obj_t *s_sidebar;
 #define SIDEBAR_ROW_HEIGHT  30
 #define SIDEBAR_ROW_GAP     6
 #define SIDEBAR_VIEW_HEIGHT 186
-#define DETAIL_VIEW_HEIGHT  228
+#define DETAIL_VIEW_HEIGHT  192
+#define DETAIL_SCROLL_STEP  44
 
 static void refresh_usage_sources(void);
 static void on_usage_switch(lv_event_t *e);
 static void scroll_group_into_view(setting_group_t group);
 static void scroll_row_into_view(int item_index);
+static lv_coord_t detail_scroll_max(void);
+static void scroll_detail_by(int detents);
 static bool group_uses_value_knob(void);
+static void settings_page(int delta);
 
 static void style_detail_row(lv_obj_t *row, bool clickable)
 {
@@ -166,6 +171,32 @@ static void scroll_row_into_view(int item_index)
     lv_obj_scroll_to_view(s_rows[item_index], LV_ANIM_OFF);
 }
 
+static lv_coord_t detail_scroll_max(void)
+{
+    if (s_list == NULL) {
+        return 0;
+    }
+    const lv_coord_t content = lv_obj_get_content_height(s_list);
+    const lv_coord_t view = lv_obj_get_height(s_list);
+    return content > view ? content - view : 0;
+}
+
+static void scroll_detail_by(int detents)
+{
+    if (s_list == NULL || detents == 0) {
+        return;
+    }
+    lv_coord_t y = lv_obj_get_scroll_y(s_list) - detents * DETAIL_SCROLL_STEP;
+    const lv_coord_t max_y = detail_scroll_max();
+    if (y < 0) {
+        y = 0;
+    }
+    if (y > max_y) {
+        y = max_y;
+    }
+    lv_obj_scroll_to_y(s_list, y, LV_ANIM_OFF);
+}
+
 static void select_row(int i)
 {
     s_selected = i;
@@ -179,7 +210,13 @@ static void select_row(int i)
 
 static void on_row(lv_event_t *e)
 {
-    select_row((int)(intptr_t)lv_event_get_user_data(e));
+    const int index = (int)(intptr_t)lv_event_get_user_data(e);
+    if (s_selected == index && detail_scroll_max() > 0) {
+        s_value_edit = true;
+        return;
+    }
+    s_value_edit = false;
+    select_row(index);
 }
 
 static void refresh_hosts(void);
@@ -190,6 +227,7 @@ static void on_host_hold(lv_event_t *e);
 static void show_group(setting_group_t group)
 {
     s_group = group;
+    s_value_edit = false;
     s_battery_level = NULL;
     s_battery_voltage = NULL;
     s_battery_power = NULL;
@@ -273,6 +311,7 @@ static void show_group(setting_group_t group)
         s_rows[i] = widget_row(s_list, s_items[i].name, &s_values[i], on_row, LV_EVENT_PRESSED,
                                (void *)(intptr_t)i);
         style_detail_row(s_rows[i], true);
+        lv_obj_set_scroll_dir(s_rows[i], LV_DIR_NONE);
         const bool numeric = s_items[i].format == FMT_X100 || s_items[i].format == FMT_INT ||
                              s_items[i].format == FMT_PERCENT;
         if (numeric) {
@@ -385,6 +424,11 @@ static void on_host_hold(lv_event_t *e)
     ble_hid_pair_host((int)(intptr_t)lv_event_get_user_data(e));
 }
 
+static void settings_page(int delta)
+{
+    scroll_detail_by(delta);
+}
+
 static void knob(int detents)
 {
     if (detents == 0) {
@@ -396,6 +440,10 @@ static void knob(int detents)
             group += GROUP_COUNT;
         }
         show_group((setting_group_t)(group % GROUP_COUNT));
+        return;
+    }
+    if (detail_scroll_max() > 0 && !s_value_edit) {
+        scroll_detail_by(detents);
         return;
     }
     if (s_selected < 0) {
@@ -489,7 +537,8 @@ static void create(lv_obj_t *scr)
     lv_obj_set_style_pad_row(s_list, 0, 0);
     lv_obj_set_scroll_dir(s_list, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(s_list, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_scrollable(s_list, true);
+    lv_obj_add_flag(s_list, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollbar_mode(s_list, LV_SCROLLBAR_MODE_OFF);
     lv_obj_align(s_list, LV_ALIGN_TOP_LEFT, 138, 121);
     s_group_title = lv_label_create(scr);
     lv_obj_set_style_text_font(s_group_title, THEME_FONT_BODY, 0);
@@ -507,4 +556,5 @@ const screen_def_t settings_screen = {
     .create = create,
     .knob = knob,
     .tick = tick,
+    .page = settings_page,
 };
