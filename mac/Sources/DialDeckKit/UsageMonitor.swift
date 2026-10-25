@@ -294,9 +294,11 @@ public final class UsageMonitor: ObservableObject {
     struct FetchError: LocalizedError {
         let errorDescription: String?
         var retryAfter: TimeInterval?   // seconds the server asked to wait
-        init(_ message: String, retryAfter: TimeInterval? = nil) {
+        var statusCode: Int?
+        init(_ message: String, retryAfter: TimeInterval? = nil, statusCode: Int? = nil) {
             errorDescription = message
             self.retryAfter = retryAfter
+            self.statusCode = statusCode
         }
     }
 
@@ -312,22 +314,43 @@ public final class UsageMonitor: ObservableObject {
     // MARK: Claude
 
     private nonisolated static func fetchClaude() async throws -> [UsageWindow] {
-        guard let credentials = keychainPassword(service: "Claude Code-credentials"),
-              let json = try JSONSerialization.jsonObject(with: credentials) as? [String: Any],
-              let oauth = json["claudeAiOauth"] as? [String: Any],
-              let token = oauth["accessToken"] as? String else {
-            throw FetchError("Claude Code is not signed in")
+        let token = try claudeAccessToken()
+        let body: [String: Any]
+        do {
+            body = try await fetchClaudeUsage(token: token)
+        } catch let error as FetchError where error.statusCode == 401 {
+            guard let latestToken = try? claudeAccessToken(), latestToken != token else {
+                throw FetchError("Claude Code rejected the usage request (401). Open Claude Code and run /login if it asks you to sign in, then relaunch DialDeck.")
+            }
+            do {
+                body = try await fetchClaudeUsage(token: latestToken)
+            } catch let retryError as FetchError where retryError.statusCode == 401 {
+                throw FetchError("Claude Code rejected the refreshed usage token (401). Run /login in Claude Code, then relaunch DialDeck.")
+            }
         }
-        var request = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
-        let body = try await fetchJSON(request)
         return [("five_hour", "5h"), ("seven_day", "7d")].map { key, label in
             let window = body[key] as? [String: Any]
             return UsageWindow(label: label,
                                percent: (window?["utilization"] as? Double).map { Int($0.rounded()) },
                                resetsAt: (window?["resets_at"] as? String).flatMap(parseDate))
         }
+    }
+
+    private nonisolated static func claudeAccessToken() throws -> String {
+        guard let credentials = keychainPassword(service: "Claude Code-credentials"),
+              let json = try JSONSerialization.jsonObject(with: credentials) as? [String: Any],
+              let oauth = json["claudeAiOauth"] as? [String: Any],
+              let token = oauth["accessToken"] as? String else {
+            throw FetchError("Claude Code is not signed in")
+        }
+        return token
+    }
+
+    private nonisolated static func fetchClaudeUsage(token: String) async throws -> [String: Any] {
+        var request = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+        return try await fetchJSON(request)
     }
 
     private nonisolated static func keychainPassword(service: String) -> Data? {
@@ -344,7 +367,7 @@ public final class UsageMonitor: ObservableObject {
 
     // MARK: Codex
 
-    /// Codex logs its rate limits with every token count, so the newest session has the latest.
+    /// Codex logs rate limits with token counts; one window may be absent from a newer row.
     private nonisolated static func fetchCodex() throws -> [UsageWindow] {
         let sessions = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".codex/sessions")
         let keys: [URLResourceKey] = [.contentModificationDateKey]
@@ -353,27 +376,24 @@ public final class UsageMonitor: ObservableObject {
             .filter { $0.pathExtension == "jsonl" }
             .map { ($0, (try? $0.resourceValues(forKeys: Set(keys)).contentModificationDate) ?? .distantPast) }
             .sorted { $0.1 > $1.1 }
+        var windows: [String: [String: Any]] = [:]
         for (file, _) in files.prefix(8) {
-            if let limits = lastRateLimits(in: file) {
-                return codexUsageWindows(from: limits)
+            for (key, window) in lastRateLimits(in: file) where windows[key] == nil {
+                windows[key] = window
+            }
+            if windows.count == 2 {
+                break
             }
         }
-        throw FetchError("No Codex session with rate limits")
-    }
-
-    /// Skip token_count rows where Codex cleared the windows (for example after a limit), so an older row is used.
-    private nonisolated static func codexLimitsAreReadable(_ limits: [String: Any]) -> Bool {
-        for key in ["primary", "secondary"] {
-            if let window = limits[key] as? [String: Any], window["used_percent"] != nil {
-                return true
-            }
+        guard !windows.isEmpty else {
+            throw FetchError("No Codex session with rate limits")
         }
-        return false
+        return codexUsageWindows(from: windows)
     }
 
-    private nonisolated static func codexUsageWindows(from limits: [String: Any]) -> [UsageWindow] {
+    private nonisolated static func codexUsageWindows(from windows: [String: [String: Any]]) -> [UsageWindow] {
         [("primary", "5h"), ("secondary", "7d")].map { key, fallback in
-            let window = limits[key] as? [String: Any]
+            let window = windows[key]
             let label = (window?["window_minutes"] as? Int).map(windowLabel) ?? fallback
             let resetsAt = (window?["resets_at"] as? Double).map { Date(timeIntervalSince1970: $0) }
             // No new token_count after the window rolled; do not guess 0% from a stale log.
@@ -386,23 +406,31 @@ public final class UsageMonitor: ObservableObject {
         }
     }
 
-    /// The newest readable rate_limits in the tail of a session log.
-    private nonisolated static func lastRateLimits(in file: URL) -> [String: Any]? {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
+    /// The newest usable value for each window in the tail of a session log.
+    private nonisolated static func lastRateLimits(in file: URL) -> [String: [String: Any]] {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return [:] }
         defer { try? handle.close() }
         let size = (try? handle.seekToEnd()) ?? 0
         try? handle.seek(toOffset: size > 512 * 1024 ? size - 512 * 1024 : 0)
-        guard let data = try? handle.readToEnd() else { return nil }
+        guard let data = try? handle.readToEnd() else { return [:] }
+        var windows: [String: [String: Any]] = [:]
         for line in String(decoding: data, as: UTF8.self).split(separator: "\n").reversed()
             where line.contains("\"rate_limits\"") {
             if let json = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
                let payload = json["payload"] as? [String: Any],
-               let limits = payload["rate_limits"] as? [String: Any],
-               codexLimitsAreReadable(limits) {
-                return limits
+               let limits = payload["rate_limits"] as? [String: Any] {
+                for key in ["primary", "secondary"] where windows[key] == nil {
+                    if let window = limits[key] as? [String: Any],
+                       window["used_percent"] as? Double != nil {
+                        windows[key] = window
+                    }
+                }
+                if windows.count == 2 {
+                    break
+                }
             }
         }
-        return nil
+        return windows
     }
 
     private nonisolated static func windowLabel(minutes: Int) -> String {
@@ -463,7 +491,8 @@ public final class UsageMonitor: ObservableObject {
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
             throw FetchError("\(request.url?.host() ?? "Server") returned \(http.statusCode)",
-                             retryAfter: (http.value(forHTTPHeaderField: "Retry-After")).flatMap(TimeInterval.init))
+                             retryAfter: (http.value(forHTTPHeaderField: "Retry-After")).flatMap(TimeInterval.init),
+                             statusCode: http.statusCode)
         }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw FetchError("Unexpected response")
