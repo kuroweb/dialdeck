@@ -62,7 +62,6 @@ static lv_obj_t *s_list;
 static lv_obj_t *s_host_rows[HOST_SLOT_COUNT];
 static lv_obj_t *s_host_states[HOST_SLOT_COUNT];
 static lv_obj_t *s_host_dots[HOST_SLOT_COUNT];
-static lv_obj_t *s_hint;
 static lv_obj_t *s_battery_level;
 static lv_obj_t *s_battery_voltage;
 static lv_obj_t *s_battery_power;
@@ -77,7 +76,7 @@ static lv_obj_t *s_sidebar;
 #define SIDEBAR_ROW_HEIGHT  30
 #define SIDEBAR_ROW_GAP     6
 #define SIDEBAR_VIEW_HEIGHT 186
-#define DETAIL_VIEW_HEIGHT  200
+#define DETAIL_VIEW_HEIGHT  228
 
 static void refresh_usage_sources(void);
 static void on_usage_switch(lv_event_t *e);
@@ -224,7 +223,6 @@ static void show_group(setting_group_t group)
 
     lv_obj_clean(s_list);
     if (group == GROUP_BATTERY) {
-        lv_label_set_text(s_hint, "USB shows charger voltage");
         lv_obj_t *level = widget_row(s_list, "Level", &s_battery_level, NULL, 0, NULL);
         lv_obj_t *voltage = widget_row(s_list, "Voltage", &s_battery_voltage, NULL, 0, NULL);
         lv_obj_t *power = widget_row(s_list, "Power", &s_battery_power, NULL, 0, NULL);
@@ -239,7 +237,6 @@ static void show_group(setting_group_t group)
         return;
     }
     if (group == GROUP_BLUETOOTH) {
-        lv_label_set_text(s_hint, "Tap to switch, hold to pair again");
         for (int i = 0; i < HOST_SLOT_COUNT; i++) {
             char label[24];
             lv_snprintf(label, sizeof(label), LV_SYMBOL_BLUETOOTH "  Host %d", i + 1);
@@ -260,7 +257,6 @@ static void show_group(setting_group_t group)
         return;
     }
     if (group == GROUP_USAGE) {
-        lv_label_set_text(s_hint, "Turn off agents you do not use");
         for (int i = 0; i < USAGE_SOURCE_COUNT; i++) {
             s_usage_rows[i] = widget_toggle_row(s_list, s_usage_names[i], &s_usage_switches[i],
                                                 on_usage_switch, (void *)(intptr_t)i);
@@ -270,7 +266,6 @@ static void show_group(setting_group_t group)
         return;
     }
 
-    lv_label_set_text(s_hint, "Tap a row, turn knob to change");
     for (int i = 0; i < ITEM_COUNT; i++) {
         if (s_items[i].group != group) {
             continue;
@@ -500,7 +495,6 @@ static void create(lv_obj_t *scr)
     lv_obj_set_style_text_font(s_group_title, THEME_FONT_BODY, 0);
     lv_obj_set_style_text_color(s_group_title, theme_accent_text(), 0);
     lv_obj_align(s_group_title, LV_ALIGN_TOP_LEFT, 150, 94);
-    s_hint = widget_hint(scr, "Tap a row, turn knob to change");
     show_group(GROUP_TRACKPAD);
 
     settings_on_change(on_settings_change);
