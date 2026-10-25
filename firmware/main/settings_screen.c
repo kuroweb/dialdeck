@@ -508,7 +508,7 @@ static void create(lv_obj_t *scr)
     lv_obj_set_style_text_font(s_group_title, THEME_FONT_BODY, 0);
     lv_obj_set_style_text_color(s_group_title, theme_accent_text(), 0);
     lv_obj_align(s_group_title, LV_ALIGN_TOP_LEFT, 150, 94);
-    show_group(GROUP_TRACKPAD);
+    show_group(GROUP_USAGE);
 
     settings_on_change(on_settings_change);
     usage_sources_on_change(on_usage_sources_change);
