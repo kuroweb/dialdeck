@@ -77,10 +77,12 @@ static lv_obj_t *s_sidebar;
 #define SIDEBAR_ROW_HEIGHT  30
 #define SIDEBAR_ROW_GAP     6
 #define SIDEBAR_VIEW_HEIGHT 186
+#define DETAIL_VIEW_HEIGHT  200
 
 static void refresh_usage_sources(void);
 static void on_usage_switch(lv_event_t *e);
 static void scroll_group_into_view(setting_group_t group);
+static void scroll_row_into_view(int item_index);
 static bool group_uses_value_knob(void);
 
 static void style_detail_row(lv_obj_t *row, bool clickable)
@@ -157,6 +159,14 @@ static void render_value(int i)
     }
 }
 
+static void scroll_row_into_view(int item_index)
+{
+    if (s_list == NULL || item_index < 0 || s_rows[item_index] == NULL) {
+        return;
+    }
+    lv_obj_scroll_to_view(s_rows[item_index], LV_ANIM_OFF);
+}
+
 static void select_row(int i)
 {
     s_selected = i;
@@ -165,6 +175,7 @@ static void select_row(int i)
             set_detail_selected(s_rows[row], row == i);
         }
     }
+    scroll_row_into_view(i);
 }
 
 static void on_row(lv_event_t *e)
@@ -288,6 +299,7 @@ static void show_group(setting_group_t group)
         set_detail_selected(s_rows[i], i == s_selected);
         render_value(i);
     }
+    scroll_row_into_view(s_selected);
 }
 
 static void scroll_group_into_view(setting_group_t group)
@@ -478,7 +490,11 @@ static void create(lv_obj_t *scr)
 
     s_list = widget_list(scr, 24);
     lv_obj_set_width(s_list, 192);
-    lv_obj_set_scrollable(s_list, false);
+    lv_obj_set_height(s_list, DETAIL_VIEW_HEIGHT);
+    lv_obj_set_style_pad_row(s_list, 0, 0);
+    lv_obj_set_scroll_dir(s_list, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(s_list, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scrollable(s_list, true);
     lv_obj_align(s_list, LV_ALIGN_TOP_LEFT, 138, 121);
     s_group_title = lv_label_create(scr);
     lv_obj_set_style_text_font(s_group_title, THEME_FONT_BODY, 0);
