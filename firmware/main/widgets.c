@@ -79,13 +79,16 @@ static void style_toggle(lv_obj_t *sw)
     lv_obj_set_size(sw, 44, 24);
     lv_obj_set_style_radius(sw, 12, LV_PART_MAIN);
     lv_obj_set_style_radius(sw, 12, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(sw, theme_button(), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(sw, theme_button_dim(), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(sw, theme_accent(), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(sw, theme_button_dim(), LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(sw, theme_accent(), LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, LV_PART_INDICATOR | LV_STATE_CHECKED);
     lv_obj_set_style_radius(sw, LV_RADIUS_CIRCLE, LV_PART_KNOB);
-    lv_obj_set_style_bg_color(sw, theme_text(), LV_PART_KNOB);
+    lv_obj_set_style_bg_color(sw, theme_text_muted(), LV_PART_KNOB);
     lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, LV_PART_KNOB);
+    lv_obj_set_style_bg_color(sw, theme_text(), LV_PART_KNOB | LV_STATE_CHECKED);
     lv_obj_set_style_pad_all(sw, -3, LV_PART_KNOB);
 }
 
