@@ -14,7 +14,7 @@ static const char *TAG = "settings";
 #define SLEEP_TIMEOUT_DEFAULT 30
 
 static settings_t s_settings = {
-    .pointer_gain = 250,
+    .pointer_gain = 75,
     .pointer_accel = 10,
     .pointer_gain_max = 500,
     .scroll_step = 1,
@@ -28,8 +28,8 @@ static const struct {
     int min;
     int max;
 } s_ranges[] = {
-    { offsetof(settings_t, pointer_gain),     100, 500 },
-    { offsetof(settings_t, pointer_accel),    0,   50 },
+    { offsetof(settings_t, pointer_gain),      25, 500 },
+    { offsetof(settings_t, pointer_accel),    0,   300 },
     { offsetof(settings_t, pointer_gain_max), 100, 1000 },
     { offsetof(settings_t, scroll_step),      1,   5 },
     { offsetof(settings_t, scroll_reverse),   0,   1 },

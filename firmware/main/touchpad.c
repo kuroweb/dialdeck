@@ -1,5 +1,6 @@
 #include "touchpad.h"
 
+#include <math.h>
 #include <stdlib.h>
 
 #include "ble_hid.h"
@@ -97,7 +98,8 @@ static int scale(int d, float gain, float *rem)
 static float gain_for(int dx, int dy, uint32_t dt_ms)
 {
     const settings_t *cfg = settings();
-    const float speed = (abs(dx) + abs(dy)) * (float)TOUCHPAD_SPEED_MS / (dt_ms > 0 ? dt_ms : 1);
+    const float distance = sqrtf((float)dx * dx + (float)dy * dy);
+    const float speed = distance * (float)TOUCHPAD_SPEED_MS / (dt_ms > 0 ? dt_ms : 1);
     const float gain = (cfg->pointer_gain + cfg->pointer_accel * speed) / 100.0f;
     const float max = cfg->pointer_gain_max / 100.0f;
     return gain > max ? max : gain;
@@ -120,7 +122,9 @@ static void move(lv_point_t p)
 {
     const uint32_t now = lv_tick_get();
     if (!s_moving) {
-        if (abs(p.x - s_start.x) >= TOUCHPAD_DEADZONE || abs(p.y - s_start.y) >= TOUCHPAD_DEADZONE) {
+        const int start_dx = p.x - s_start.x;
+        const int start_dy = p.y - s_start.y;
+        if (start_dx * start_dx + start_dy * start_dy >= TOUCHPAD_DEADZONE * TOUCHPAD_DEADZONE) {
             s_moving = true;
             s_last = p;
             s_last_ms = now;

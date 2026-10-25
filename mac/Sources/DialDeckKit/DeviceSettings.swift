@@ -13,8 +13,8 @@ public struct DeviceSettings: Equatable, Sendable {
     public var brightness: Int32       // percent
 
     /// Ranges the device accepts, matching firmware/main/settings.c.
-    public static let pointerGainRange: ClosedRange<Int32> = 100...500
-    public static let pointerAccelRange: ClosedRange<Int32> = 0...50
+    public static let pointerGainRange: ClosedRange<Int32> = 25...500
+    public static let pointerAccelRange: ClosedRange<Int32> = 0...300
     public static let pointerGainMaxRange: ClosedRange<Int32> = 100...1000
     public static let scrollStepRange: ClosedRange<Int32> = 1...5
     public static let brightnessRange: ClosedRange<Int32> = 1...100
