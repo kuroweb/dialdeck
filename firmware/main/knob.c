@@ -17,7 +17,7 @@ typedef struct {
     int gpio;
     int dir;
     int index;
-    bool pressed;
+    atomic_bool pressed;
 } knob_pin_t;
 
 static knob_pin_t s_pins[] = {
@@ -55,16 +55,16 @@ static void knob_event_task(void *arg)
 
         knob_pin_t *pin = &s_pins[event.index];
         if (event.level) {
-            pin->pressed = false;
+            atomic_store(&pin->pressed, false);
             continue;
         }
-        if (pin->pressed) {
+        if (atomic_load(&pin->pressed)) {
             continue;
         }
 
         esp_rom_delay_us(KNOB_DEBOUNCE_US);
         if (gpio_get_level(pin->gpio) == 0) {
-            pin->pressed = true;
+            atomic_store(&pin->pressed, true);
             atomic_fetch_add(&s_pending, pin->dir);
             atomic_fetch_add(&s_scroll, pin->dir);
         }
@@ -82,6 +82,21 @@ int knob_take_scroll(void)
     return atomic_exchange(&s_scroll, 0);
 }
 
+void knob_set_sleep_wakeup(bool enabled)
+{
+    for (size_t i = 0; i < sizeof(s_pins) / sizeof(s_pins[0]); i++) {
+        knob_pin_t *pin = &s_pins[i];
+        if (enabled) {
+            ESP_ERROR_CHECK(gpio_wakeup_enable(pin->gpio, GPIO_INTR_LOW_LEVEL));
+            continue;
+        }
+
+        ESP_ERROR_CHECK(gpio_wakeup_disable(pin->gpio));
+        ESP_ERROR_CHECK(gpio_set_intr_type(pin->gpio, GPIO_INTR_ANYEDGE));
+        atomic_store(&pin->pressed, gpio_get_level(pin->gpio) == 0);
+    }
+}
+
 lv_indev_t *knob_init(void)
 {
     const gpio_config_t io = {
@@ -94,7 +109,8 @@ lv_indev_t *knob_init(void)
 
     s_events = xQueueCreate(KNOB_EVENT_COUNT, sizeof(knob_event_t));
     configASSERT(s_events != NULL);
-    configASSERT(xTaskCreate(knob_event_task, "knob", 2048, NULL, 5, NULL) == pdPASS);
+    // Run before input_task so short (~4 ms) encoder pulses are checked before they end.
+    configASSERT(xTaskCreate(knob_event_task, "knob", 2048, NULL, 6, NULL) == pdPASS);
     for (size_t i = 0; i < sizeof(s_pins) / sizeof(s_pins[0]); i++) {
         ESP_ERROR_CHECK(gpio_isr_handler_add(s_pins[i].gpio, knob_isr, &s_pins[i]));
     }

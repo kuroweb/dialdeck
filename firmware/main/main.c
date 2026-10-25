@@ -91,8 +91,9 @@ void app_main(void)
 
     display_init();
     display_set_brightness(settings()->brightness);
-    display_set_idle_timeout(settings_display_timeout());
+    display_set_sleep_timeout(settings_sleep_timeout());
     knob_init();
+    display_low_power_init();
     battery_init();
     ble_hid_init();
 

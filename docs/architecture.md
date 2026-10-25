@@ -40,7 +40,7 @@ ESP-IDF v6.1。アプリは `firmware/main`。画面は `screen_def_t`（`screen
 | ファイル | 役割 |
 | --- | --- |
 | `main.c` | 起動。タッチとノブを、HID か画面へ渡す |
-| `display.c` | 液晶 ST77916、タッチ CST816、LVGL、明るさ、無操作時の液晶スリープ |
+| `display.c` | 液晶 ST77916、タッチ CST816、LVGL、明るさ、無操作時の液晶休止と自動 Light Sleep |
 | `lcd_init_cmds.h` | 液晶の初期化列。出典は上流 v2.2.12 |
 | `knob.c` | ノブの目盛り |
 | `touchpad.c` | 画面をマウスにするジェスチャ |

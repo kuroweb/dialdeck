@@ -29,7 +29,7 @@ typedef enum {
     FMT_INT,
     FMT_PERCENT,
     FMT_DIRECTION,
-    FMT_TIMEOUT,
+    FMT_SLEEP_TIMEOUT,
 } item_format_t;
 
 typedef struct {
@@ -47,11 +47,11 @@ static const item_t s_items[] = {
     { "Scroll step",    GROUP_TRACKPAD, offsetof(settings_t, scroll_step),      1,  FMT_INT },
     { "Scroll dir",     GROUP_TRACKPAD, offsetof(settings_t, scroll_reverse),   1,  FMT_DIRECTION },
     { "Brightness",     GROUP_DISPLAY, offsetof(settings_t, brightness),       1,  FMT_PERCENT },
-    { "Screen timeout", GROUP_DISPLAY, 0,                                      1,  FMT_TIMEOUT },
+    { "Sleep after",    GROUP_DISPLAY, 0,                                      1,  FMT_SLEEP_TIMEOUT },
 };
 #define ITEM_COUNT  (sizeof(s_items) / sizeof(s_items[0]))
 
-static const int s_timeout_values[] = { 0, 15, 30, 60, 120, 300 };
+static const int s_sleep_timeout_values[] = { 0, 15, 30, 60, 120, 300 };
 
 static lv_obj_t *s_rows[ITEM_COUNT];
 static lv_obj_t *s_values[ITEM_COUNT];
@@ -69,7 +69,6 @@ static lv_obj_t *s_usage_rows[USAGE_SOURCE_COUNT];
 static lv_obj_t *s_usage_switches[USAGE_SOURCE_COUNT];
 static const char *const s_usage_names[USAGE_SOURCE_COUNT] = { "Claude", "Codex", "Cursor" };
 static int s_selected;
-static bool s_value_edit;
 static setting_group_t s_group;
 static lv_obj_t *s_sidebar;
 
@@ -78,13 +77,10 @@ static lv_obj_t *s_sidebar;
 #define SIDEBAR_ROW_GAP     6
 #define SIDEBAR_VIEW_HEIGHT 186
 #define DETAIL_VIEW_HEIGHT  192
-#define DETAIL_SCROLL_STEP  44
 
 static void refresh_usage_sources(void);
 static void on_usage_switch(lv_event_t *e);
 static void scroll_group_into_view(setting_group_t group);
-static lv_coord_t detail_scroll_max(void);
-static void scroll_detail_by(int detents);
 static bool group_uses_value_knob(void);
 
 static void style_detail_row(lv_obj_t *row, bool clickable)
@@ -112,12 +108,12 @@ static int32_t *item_value(const item_t *item)
     return (int32_t *)((char *)settings() + item->offset);
 }
 
-static int timeout_index(void)
+static int sleep_timeout_index(void)
 {
-    const int timeout = settings_display_timeout();
-    const int count = sizeof(s_timeout_values) / sizeof(s_timeout_values[0]);
+    const int timeout = settings_sleep_timeout();
+    const int count = sizeof(s_sleep_timeout_values) / sizeof(s_sleep_timeout_values[0]);
     for (int i = 0; i < count; i++) {
-        if (s_timeout_values[i] == timeout) {
+        if (s_sleep_timeout_values[i] == timeout) {
             return i;
         }
     }
@@ -130,7 +126,7 @@ static void render_value(int i)
         return;
     }
     const item_t *item = &s_items[i];
-    const int v = item->format == FMT_TIMEOUT ? settings_display_timeout() : (int)*item_value(item);
+    const int v = item->format == FMT_SLEEP_TIMEOUT ? settings_sleep_timeout() : (int)*item_value(item);
     char text[16];
     switch (item->format) {
     case FMT_X100:
@@ -145,7 +141,7 @@ static void render_value(int i)
     case FMT_DIRECTION:
         lv_snprintf(text, sizeof(text), "%s", v ? "Reverse" : "Normal");
         break;
-    case FMT_TIMEOUT:
+    case FMT_SLEEP_TIMEOUT:
         if (v == 0) {
             lv_snprintf(text, sizeof(text), "Never");
         } else if (v < 60) {
@@ -161,33 +157,6 @@ static void render_value(int i)
     }
 }
 
-static lv_coord_t detail_scroll_max(void)
-{
-    if (s_list == NULL) {
-        return 0;
-    }
-    lv_obj_update_layout(s_list);
-    const lv_coord_t content = lv_obj_get_content_height(s_list);
-    const lv_coord_t view = lv_obj_get_height(s_list);
-    return content > view ? content - view : 0;
-}
-
-static void scroll_detail_by(int detents)
-{
-    if (s_list == NULL || detents == 0) {
-        return;
-    }
-    lv_coord_t y = lv_obj_get_scroll_y(s_list) - detents * DETAIL_SCROLL_STEP;
-    const lv_coord_t max_y = detail_scroll_max();
-    if (y < 0) {
-        y = 0;
-    }
-    if (y > max_y) {
-        y = max_y;
-    }
-    lv_obj_scroll_to_y(s_list, y, LV_ANIM_OFF);
-}
-
 static void select_row(int i)
 {
     s_selected = i;
@@ -196,16 +165,14 @@ static void select_row(int i)
             set_detail_selected(s_rows[row], row == i);
         }
     }
+    if (s_rows[i] != NULL) {
+        lv_obj_scroll_to_view(s_rows[i], LV_ANIM_OFF);
+    }
 }
 
 static void on_row(lv_event_t *e)
 {
     const int index = (int)(intptr_t)lv_event_get_user_data(e);
-    if (s_selected == index && detail_scroll_max() > 0) {
-        s_value_edit = true;
-        return;
-    }
-    s_value_edit = false;
     select_row(index);
 }
 
@@ -218,7 +185,6 @@ static void show_group(setting_group_t group)
 {
     const bool new_group = group != s_group;
     s_group = group;
-    s_value_edit = false;
     s_battery_level = NULL;
     s_battery_voltage = NULL;
     s_battery_power = NULL;
@@ -434,24 +400,20 @@ static void knob(int detents)
         show_group((setting_group_t)(group % GROUP_COUNT));
         return;
     }
-    if (detail_scroll_max() > 0 && !s_value_edit) {
-        scroll_detail_by(detents);
-        return;
-    }
     if (s_selected < 0) {
         return;
     }
     const item_t *item = &s_items[s_selected];
-    if (item->format == FMT_TIMEOUT) {
-        const int count = sizeof(s_timeout_values) / sizeof(s_timeout_values[0]);
-        int index = (timeout_index() + detents) % count;
+    if (item->format == FMT_SLEEP_TIMEOUT) {
+        const int count = sizeof(s_sleep_timeout_values) / sizeof(s_sleep_timeout_values[0]);
+        int index = (sleep_timeout_index() + detents) % count;
         if (index < 0) {
             index += count;
         }
-        const int seconds = s_timeout_values[index];
-        if (seconds != settings_display_timeout()) {
-            settings_set_display_timeout(seconds);
-            display_set_idle_timeout(seconds);
+        const int seconds = s_sleep_timeout_values[index];
+        if (seconds != settings_sleep_timeout()) {
+            settings_set_sleep_timeout(seconds);
+            display_set_sleep_timeout(seconds);
             render_value(s_selected);
         }
         return;
@@ -497,7 +459,7 @@ static void on_settings_change(void)
     }
     lvgl_port_unlock();
     display_set_brightness(settings()->brightness);
-    display_set_idle_timeout(settings_display_timeout());
+    display_set_sleep_timeout(settings_sleep_timeout());
 }
 
 static void tick(void)

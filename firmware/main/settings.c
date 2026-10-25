@@ -8,9 +8,10 @@ static const char *TAG = "settings";
 
 #define NVS_NAMESPACE   "dialdeck"
 #define NVS_KEY         "settings"
-#define NVS_DISPLAY_TIMEOUT_KEY "display_timeout"
+#define NVS_SLEEP_TIMEOUT_KEY "sleep_timeout"
+#define NVS_LEGACY_DISPLAY_TIMEOUT_KEY "display_timeout"
 #define SAVE_DELAY_US   (1000 * 1000)
-#define DISPLAY_TIMEOUT_DEFAULT 30
+#define SLEEP_TIMEOUT_DEFAULT 30
 
 static settings_t s_settings = {
     .pointer_gain = 250,
@@ -20,7 +21,7 @@ static settings_t s_settings = {
     .scroll_reverse = 0,
     .brightness = 100,
 };
-static int32_t s_display_timeout = DISPLAY_TIMEOUT_DEFAULT;
+static int32_t s_sleep_timeout = SLEEP_TIMEOUT_DEFAULT;
 
 static const struct {
     size_t offset;
@@ -49,9 +50,13 @@ static void save(void *arg)
     }
     esp_err_t err = nvs_set_blob(nvs, NVS_KEY, &s_settings, sizeof(s_settings));
     if (err == ESP_OK) {
-        err = nvs_set_i32(nvs, NVS_DISPLAY_TIMEOUT_KEY, s_display_timeout);
+        err = nvs_set_i32(nvs, NVS_SLEEP_TIMEOUT_KEY, s_sleep_timeout);
     }
     if (err == ESP_OK) {
+        const esp_err_t erase_err = nvs_erase_key(nvs, NVS_LEGACY_DISPLAY_TIMEOUT_KEY);
+        if (erase_err != ESP_OK && erase_err != ESP_ERR_NVS_NOT_FOUND) {
+            ESP_LOGW(TAG, "could not remove old timeout key: %s", esp_err_to_name(erase_err));
+        }
         err = nvs_commit(nvs);
     }
     nvs_close(nvs);
@@ -68,7 +73,9 @@ void settings_load(void)
         if (nvs_get_blob(nvs, NVS_KEY, &stored, &len) == ESP_OK && len == sizeof(stored)) {
             s_settings = stored;
         }
-        nvs_get_i32(nvs, NVS_DISPLAY_TIMEOUT_KEY, &s_display_timeout);
+        if (nvs_get_i32(nvs, NVS_SLEEP_TIMEOUT_KEY, &s_sleep_timeout) == ESP_ERR_NVS_NOT_FOUND) {
+            nvs_get_i32(nvs, NVS_LEGACY_DISPLAY_TIMEOUT_KEY, &s_sleep_timeout);
+        }
         nvs_close(nvs);
     }
 
@@ -84,14 +91,14 @@ settings_t *settings(void)
     return &s_settings;
 }
 
-int settings_display_timeout(void)
+int settings_sleep_timeout(void)
 {
-    return s_display_timeout;
+    return s_sleep_timeout;
 }
 
-void settings_set_display_timeout(int seconds)
+void settings_set_sleep_timeout(int seconds)
 {
-    s_display_timeout = seconds;
+    s_sleep_timeout = seconds;
     settings_changed();
 }
 

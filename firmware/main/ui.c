@@ -6,7 +6,6 @@
 #include <stdlib.h>
 
 #include "board.h"
-#include "display.h"
 #include "screen.h"
 #include "status_bar.h"
 #include "theme.h"
@@ -264,7 +263,6 @@ static void consume_swipe(void)
 
 static void on_nav(lv_event_t *e)
 {
-    display_note_activity();
     if (lv_event_get_code(e) == LV_EVENT_PRESSING) {
         return;
     }

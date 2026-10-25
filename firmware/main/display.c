@@ -4,12 +4,16 @@
 #include <stdatomic.h>
 
 #include "board.h"
+#include "knob.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "driver/ledc.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
+#include "esp_pm.h"
+#include "esp_sleep.h"
 #include "esp_timer.h"
+#include "sdkconfig.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_st77916.h"
@@ -29,14 +33,28 @@ static const char *TAG = "display";
 #define LCD_SLEEP_OUT_MS  120
 
 static atomic_int s_brightness = 100;
-static atomic_int s_idle_timeout;
+static atomic_int s_sleep_timeout;
 static atomic_llong s_last_activity_us;
 static atomic_bool s_backlight_on = true;
 static atomic_bool s_panel_sleeping;
 static atomic_bool s_wake_requested;
 static bool s_consume_wake_touch;
+static esp_pm_lock_handle_t s_awake_lock;
 static esp_lcd_panel_io_handle_t s_panel_io;
 static esp_lcd_panel_handle_t s_panel;
+
+static void configure_wake_inputs(bool sleeping)
+{
+    if (sleeping) {
+        ESP_ERROR_CHECK(gpio_wakeup_enable(BOARD_TOUCH_INT, GPIO_INTR_LOW_LEVEL));
+        knob_set_sleep_wakeup(true);
+        return;
+    }
+
+    ESP_ERROR_CHECK(gpio_wakeup_disable(BOARD_TOUCH_INT));
+    ESP_ERROR_CHECK(gpio_set_intr_type(BOARD_TOUCH_INT, GPIO_INTR_NEGEDGE));
+    knob_set_sleep_wakeup(false);
+}
 
 static void set_backlight(bool on)
 {
@@ -82,9 +100,23 @@ void display_set_brightness(int percent)
     }
 }
 
-void display_set_idle_timeout(int seconds)
+void display_low_power_init(void)
 {
-    atomic_store(&s_idle_timeout, seconds);
+    const esp_pm_config_t pm_config = {
+        .max_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
+        .min_freq_mhz = CONFIG_XTAL_FREQ,
+        .light_sleep_enable = true,
+    };
+    ESP_ERROR_CHECK(esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, "display_awake", &s_awake_lock));
+    ESP_ERROR_CHECK(esp_pm_lock_acquire(s_awake_lock));
+    ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
+
+    ESP_ERROR_CHECK(esp_sleep_enable_gpio_wakeup());
+}
+
+void display_set_sleep_timeout(int seconds)
+{
+    atomic_store(&s_sleep_timeout, seconds);
     display_note_activity();
 }
 
@@ -102,13 +134,12 @@ static void touch_input_event(lv_event_t *e)
 {
     const lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_PRESSED) {
-        if (!atomic_load(&s_backlight_on)) {
-            display_note_activity();
-            s_consume_wake_touch = true;
-        } else {
-            // A drag can end without LVGL sending CLICKED; release the guard on the next touch.
-            s_consume_wake_touch = false;
-        }
+        const bool waking = !atomic_load(&s_backlight_on);
+        display_note_activity();
+        // A drag can end without LVGL sending CLICKED; release the guard on the next touch.
+        s_consume_wake_touch = waking;
+    } else if (code == LV_EVENT_PRESSING && !s_consume_wake_touch) {
+        display_note_activity();
     }
     if (!s_consume_wake_touch) {
         return;
@@ -123,6 +154,8 @@ static void touch_input_event(lv_event_t *e)
 void display_idle_check(void)
 {
     if (atomic_exchange(&s_wake_requested, false) && atomic_load(&s_panel_sleeping)) {
+        ESP_ERROR_CHECK(esp_pm_lock_acquire(s_awake_lock));
+        configure_wake_inputs(false);
         ESP_ERROR_CHECK(esp_lcd_panel_io_tx_param(s_panel_io, LCD_CMD_SLEEP_OUT, NULL, 0));
         vTaskDelay(pdMS_TO_TICKS(LCD_SLEEP_OUT_MS));
         ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(s_panel, true));
@@ -130,13 +163,15 @@ void display_idle_check(void)
         set_backlight(true);
     }
 
-    const int timeout = atomic_load(&s_idle_timeout);
+    const int timeout = atomic_load(&s_sleep_timeout);
     if (timeout > 0 && !atomic_load(&s_panel_sleeping) &&
         esp_timer_get_time() - atomic_load(&s_last_activity_us) >= (int64_t)timeout * 1000000) {
         set_backlight(false);
         atomic_store(&s_panel_sleeping, true);
         ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(s_panel, false));
         ESP_ERROR_CHECK(esp_lcd_panel_io_tx_param(s_panel_io, LCD_CMD_SLEEP_IN, NULL, 0));
+        configure_wake_inputs(true);
+        ESP_ERROR_CHECK(esp_pm_lock_release(s_awake_lock));
     }
 }
 

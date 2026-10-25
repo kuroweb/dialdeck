@@ -43,7 +43,7 @@ CST816 のタッチドライバは、INT ピン（GPIO7）のために GPIO の 
 
 設定画面の Battery に残量、ADC の測定電圧、給電状態を表示する。USB 接続中の電圧は充電 IC の出力なので、残量は `--` と表示する。残量表示と実際の稼働時間を照合する場合は、USB を抜いた状態で電圧と % を記録する。
 
-画面オフ中は入力処理を 100 ms 間隔、ADC 測定を 10 秒間隔にする。CPU の動的周波数制御と BLE コントローラの休止も有効にする。実機の消費電流と一晩の残量変化は、この変更後まだ測定していない。
+Display の Sleep after（既定 30 秒）が経過すると、バックライトと液晶を休止し、自動 Light Sleep を許可する。タッチ（GPIO7）とノブ（GPIO1、GPIO2）で復帰する。GPIO wake は割り込み方式を LOW level に変えるため、スリープ直前に設定し、復帰時にタッチの falling edge とノブの any edge に戻す。ESP-IDF v6.1 の FreeRTOS は自動 Light Sleep のため、単一コア・1 kHz の tickless idle にする。BLE モデムスリープと自動 Light Sleep を有効にし、BLE 接続を維持する構成にしている。画面オフ中の入力処理は 100 ms 間隔、ADC 測定は 10 秒間隔。実機での復帰、BLE 接続、消費電流、一晩の残量変化はまだ測定していない。
 
 ## BLE HID
 
