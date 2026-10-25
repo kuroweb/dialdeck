@@ -58,15 +58,11 @@ struct RootView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Label("DialDeck", systemImage: "dial.medium")
-                .font(.headline)
-                .padding(.horizontal, 14)
-                .frame(height: 52)
-
             Text("DEVICE")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.leading, 14)
+                .padding(.top, 14)
                 .padding(.bottom, 6)
 
             VStack(spacing: 2) {
