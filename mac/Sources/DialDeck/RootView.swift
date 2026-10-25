@@ -46,7 +46,15 @@ struct RootView: View {
                 ConnectionBar(link: link)
             }
         }
-        .frame(width: 880, height: 540)
+        .frame(width: windowWidth, height: 540)
+    }
+
+    private var windowWidth: CGFloat {
+        switch selection {
+        case .agents: 500
+        case .touchpad: 540
+        case .deck: 860
+        }
     }
 
     private var sidebar: some View {

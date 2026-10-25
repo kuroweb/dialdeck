@@ -70,6 +70,9 @@ struct AgentsSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .frame(maxWidth: 360, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
     }
 
     private func enabledBinding(_ agent: UsageProvider) -> Binding<Bool> {
