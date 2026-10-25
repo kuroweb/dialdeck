@@ -30,7 +30,12 @@ struct AgentsSettingsView: View {
                 }
                 switch usage.state {
                 case .off:
-                    EmptyView()
+                    if usage.provider == .off {
+                        EmptyView()
+                    } else {
+                        Label("Reading usage…", systemImage: "ellipsis")
+                            .foregroundStyle(.secondary)
+                    }
                 case .running(let windows):
                     rows(windows)
                 case .stale(let windows, let message):
@@ -49,11 +54,21 @@ struct AgentsSettingsView: View {
             } header: {
                 Text("Usage")
             } footer: {
-                Text("Shown in the middle of the Agents screen. Claude and Cursor are read every five minutes, Codex every minute. Tap it on the device to switch.")
+                Text(usageFooter)
                     .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var usageFooter: String {
+        let onDevice = "Shown in the middle of the Agents screen. Tap the center on the device to switch provider."
+        switch usage.provider {
+        case .off: return onDevice
+        case .claude: return "\(onDevice) Claude is read every five minutes."
+        case .codex: return "\(onDevice) Codex is read every minute from local session logs."
+        case .cursor: return "\(onDevice) Cursor is read every five minutes."
+        }
     }
 
     private func rows(_ windows: [UsageWindow]) -> some View {

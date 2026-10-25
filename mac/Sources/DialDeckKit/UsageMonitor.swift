@@ -49,10 +49,7 @@ public final class UsageMonitor: ObservableObject {
     @Published public var provider: UsageProvider {
         didSet {
             UserDefaults.standard.set(provider.rawValue, forKey: Self.providerKey)
-            // Show the new name on the device right away; the windows follow once read.
-            if provider != .off {
-                send(provider, cache[provider] ?? [UsageWindow(label: "--", percent: nil, resetsAt: nil)])
-            }
+            syncStateForProvider()
             poll()
         }
     }
@@ -88,7 +85,24 @@ public final class UsageMonitor: ObservableObject {
         Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.checkLink() }
         }
+        syncStateForProvider()
         poll()
+    }
+
+    /// Match `state` and the device payload to the selected provider (not the previous fetch).
+    private func syncStateForProvider() {
+        if provider == .off {
+            state = .off
+            send(provider, [])
+            return
+        }
+        if let windows = cache[provider] {
+            state = .running(windows)
+            send(provider, windows)
+        } else {
+            state = .off
+            send(provider, [UsageWindow(label: "--", percent: nil, resetsAt: nil)])
+        }
     }
 
     private func checkLink() {

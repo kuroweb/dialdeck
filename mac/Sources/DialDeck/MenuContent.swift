@@ -48,7 +48,8 @@ struct MenuContent: View {
 
     private var usageText: String {
         switch usage.state {
-        case .off: "Usage: off"
+        case .off:
+            usage.provider == .off ? "Usage: off" : "\(usage.provider.name): reading…"
         case .running(let windows), .stale(let windows, _):
             "\(usage.provider.name): " + windows.map { "\($0.label) \($0.percent.map { "\($0)%" } ?? "--")" }
                 .joined(separator: " · ")
