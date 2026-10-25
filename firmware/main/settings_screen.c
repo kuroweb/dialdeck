@@ -53,7 +53,7 @@ static const item_t s_items[] = {
 };
 #define ITEM_COUNT  (sizeof(s_items) / sizeof(s_items[0]))
 
-static const int s_sleep_timeout_values[] = { 0, 15, 30, 60, 120, 300 };
+static const int s_sleep_timeout_values[] = { 0, 15, 30, 60, 120, 300, 600, 900, 1800 };
 
 static lv_obj_t *s_rows[ITEM_COUNT];
 static lv_obj_t *s_values[ITEM_COUNT];
