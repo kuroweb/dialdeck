@@ -12,7 +12,7 @@ struct DeckEditorView: View {
     @State private var selection = 0
 
     var body: some View {
-        HStack(alignment: .top, spacing: 24) {
+        HStack(alignment: .top, spacing: 16) {
             DeckPreview(slots: link.slots, selection: $selection)
             SlotEditor(name: slotName(selection), stored: link.slots[selection]) {
                 link.write($0, at: selection)
@@ -31,10 +31,10 @@ private struct DeckPreview: View {
     let slots: [DeckSlot]
     @Binding var selection: Int
 
-    private let size: CGFloat = 320
-    private let ringRadius: CGFloat = 100
-    private let ringButton: CGFloat = 58
-    private let centerButton: CGFloat = 84
+    private let size: CGFloat = 240
+    private let ringRadius: CGFloat = 75
+    private let ringButton: CGFloat = 44
+    private let centerButton: CGFloat = 63
 
     var body: some View {
         ZStack {
@@ -59,7 +59,7 @@ private struct DeckPreview: View {
         let diameter = index == 0 ? centerButton : ringButton
         return Button { selection = index } label: {
             Text(displayLabel(slot.label))
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
