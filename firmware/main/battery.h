@@ -12,3 +12,7 @@ bool battery_charging(void);
 // charging the voltage is the charger's, so the last value measured on battery is kept.
 // -1 until the first reading on battery.
 int battery_percent(void);
+
+// Latest averaged ADC voltage at the battery sense pin, multiplied by the divider.
+// -1 until the first reading. On external power this is the charger output.
+int battery_voltage_mv(void);

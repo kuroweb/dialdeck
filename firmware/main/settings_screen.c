@@ -1,6 +1,7 @@
 // Device settings grouped by function. Tap a value row to select it, then turn the knob to change it.
 #include <stddef.h>
 
+#include "battery.h"
 #include "ble_hid.h"
 #include "display.h"
 #include "esp_lvgl_port.h"
@@ -56,6 +57,7 @@ static lv_obj_t *s_list;
 static lv_obj_t *s_host_rows[HOST_SLOT_COUNT];
 static lv_obj_t *s_host_states[HOST_SLOT_COUNT];
 static lv_obj_t *s_hint;
+static lv_obj_t *s_battery_voltage;
 static int s_selected;
 static setting_group_t s_group;
 
@@ -137,6 +139,7 @@ static void on_host_hold(lv_event_t *e);
 static void show_group(setting_group_t group)
 {
     s_group = group;
+    s_battery_voltage = NULL;
     int first = -1;
     for (int i = 0; i < ITEM_COUNT; i++) {
         s_rows[i] = NULL;
@@ -178,6 +181,15 @@ static void show_group(setting_group_t group)
                                (void *)(intptr_t)i);
         widget_row_set_selected(s_rows[i], i == s_selected);
         render_value(i);
+    }
+    if (group == GROUP_DISPLAY) {
+        widget_row(s_list, "Sense voltage", &s_battery_voltage, NULL, 0, NULL);
+        const int mv = battery_voltage_mv();
+        if (mv < 0) {
+            lv_label_set_text(s_battery_voltage, "--");
+        } else {
+            lv_label_set_text_fmt(s_battery_voltage, "%d.%03dV", mv / 1000, mv % 1000);
+        }
     }
 }
 
@@ -273,6 +285,11 @@ static void tick(void)
 {
     if (s_group == GROUP_BLUETOOTH) {
         refresh_hosts();
+    } else if (s_group == GROUP_DISPLAY && s_battery_voltage) {
+        const int mv = battery_voltage_mv();
+        if (mv >= 0) {
+            lv_label_set_text_fmt(s_battery_voltage, "%d.%03dV", mv / 1000, mv % 1000);
+        }
     }
 }
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdbool.h>
+
 #include "lvgl.h"
 
 // Bring up the ST77916 panel, CST816 touch and LVGL, and turn the backlight on.
@@ -12,3 +14,4 @@ void display_set_brightness(int percent);
 void display_set_idle_timeout(int seconds);
 void display_note_activity(void);
 void display_idle_check(void);
+bool display_is_sleeping(void);

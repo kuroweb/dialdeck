@@ -74,7 +74,7 @@ static void input_task(void *arg)
         if (wheel != 0) {
             ble_hid_mouse(0, 0, wheel, buttons);
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(display_is_sleeping() ? 100 : 10));
     }
 }
 

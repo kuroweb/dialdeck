@@ -16,22 +16,22 @@ static const char *TAG = "battery";
 // The charger's ripple reaches the ADC unfiltered, so each reading averages many samples and the
 // readings are smoothed again over time.
 #define SAMPLES_PER_READING  64
-#define READING_PERIOD_MS    1000
-#define SMOOTHING            0.2f   // weight of a new reading in the moving average
+#define READING_PERIOD_MS    10000
+#define SMOOTHING            0.5f   // weight of a new reading in the moving average
 
 // A Li-ion cell never reads above ~4.2 V on its own; on USB the pin reads the charger output,
 // measured at ~4.45 V. Above this the device is on external power even without a USB host
 // (a plain charger).
 #define EXTERNAL_POWER_MV    4300
 
-// Open-circuit voltage to charge for a single Li-ion cell under the light load of this device.
-// On battery right after a full charge the device measured 4.16 V.
+// Reference discharge curve from esphome-guition-jc3636k718c-va v2.2.12, measured under load.
+// This device has not yet had a full discharge measured for its own percentage curve.
 static const struct {
     int mv;
     int percent;
 } s_curve[] = {
-    { 4150, 100 }, { 4050, 90 }, { 3970, 80 }, { 3900, 70 }, { 3840, 60 }, { 3790, 50 },
-    { 3750, 40 }, { 3710, 30 }, { 3680, 20 }, { 3620, 10 }, { 3500, 5 }, { 3300, 0 },
+    { 4100, 100 }, { 3840, 80 }, { 3740, 60 }, { 3570, 40 },
+    { 3390, 20 }, { 3250, 4 }, { 3200, 0 },
 };
 #define CURVE_LEN  (sizeof(s_curve) / sizeof(s_curve[0]))
 
@@ -40,17 +40,22 @@ static adc_cali_handle_t s_cali;
 static adc_channel_t s_channel;
 static atomic_bool s_charging;
 static atomic_int s_percent = -1;
+static atomic_int s_voltage_mv = -1;
 
 static int read_pin_mv(void)
 {
     int sum = 0;
+    int count = 0;
     for (int i = 0; i < SAMPLES_PER_READING; i++) {
         int raw = 0, mv = 0;
-        adc_oneshot_read(s_adc, s_channel, &raw);
-        adc_cali_raw_to_voltage(s_cali, raw, &mv);
+        if (adc_oneshot_read(s_adc, s_channel, &raw) != ESP_OK ||
+            adc_cali_raw_to_voltage(s_cali, raw, &mv) != ESP_OK) {
+            continue;
+        }
         sum += mv;
+        count++;
     }
-    return sum / SAMPLES_PER_READING;
+    return count >= SAMPLES_PER_READING / 2 ? sum / count : -1;
 }
 
 static int percent_for(int mv)
@@ -62,7 +67,7 @@ static int percent_for(int mv)
         if (mv >= s_curve[i].mv) {
             const int span = s_curve[i - 1].mv - s_curve[i].mv;
             const int gain = s_curve[i - 1].percent - s_curve[i].percent;
-            return s_curve[i].percent + (mv - s_curve[i].mv) * gain / span;
+            return s_curve[i].percent + ((mv - s_curve[i].mv) * gain + span / 2) / span;
         }
     }
     return 0;
@@ -73,7 +78,14 @@ static void battery_task(void *arg)
     float smoothed = 0;
     bool was_charging = false;
     while (1) {
-        const int mv = read_pin_mv() * BOARD_BATTERY_DIVIDER;
+        const int pin_mv = read_pin_mv();
+        if (pin_mv < 0) {
+            ESP_LOGW(TAG, "ADC reading failed");
+            vTaskDelay(pdMS_TO_TICKS(READING_PERIOD_MS));
+            continue;
+        }
+        const int mv = pin_mv * BOARD_BATTERY_DIVIDER;
+        atomic_store(&s_voltage_mv, mv);
         const bool charging = usb_serial_jtag_is_connected() || mv >= EXTERNAL_POWER_MV;
         // Start over when external power goes away, so the charger's voltage does not linger
         // in the average.
@@ -123,4 +135,9 @@ bool battery_charging(void)
 int battery_percent(void)
 {
     return atomic_load(&s_percent);
+}
+
+int battery_voltage_mv(void)
+{
+    return atomic_load(&s_voltage_mv);
 }

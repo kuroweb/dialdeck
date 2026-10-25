@@ -140,6 +140,11 @@ void display_idle_check(void)
     }
 }
 
+bool display_is_sleeping(void)
+{
+    return atomic_load(&s_panel_sleeping);
+}
+
 static void panel_init(esp_lcd_panel_io_handle_t *ret_io, esp_lcd_panel_handle_t *ret_panel)
 {
     const spi_bus_config_t bus = ST77916_PANEL_BUS_QSPI_CONFIG(
