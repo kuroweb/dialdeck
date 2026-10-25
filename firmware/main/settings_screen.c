@@ -52,7 +52,8 @@ static const int s_timeout_values[] = { 0, 15, 30, 60, 120, 300 };
 
 static lv_obj_t *s_rows[ITEM_COUNT];
 static lv_obj_t *s_values[ITEM_COUNT];
-static lv_obj_t *s_group_buttons[GROUP_COUNT];
+static lv_obj_t *s_group_rows[GROUP_COUNT];
+static lv_obj_t *s_group_title;
 static lv_obj_t *s_list;
 static lv_obj_t *s_host_rows[HOST_SLOT_COUNT];
 static lv_obj_t *s_host_states[HOST_SLOT_COUNT];
@@ -109,22 +110,17 @@ static void render_value(int i)
         }
         break;
     }
-    // Arrows on the selected row show that the knob changes it.
-    if (i == s_selected) {
-        lv_label_set_text_fmt(s_values[i], LV_SYMBOL_LEFT " %s " LV_SYMBOL_RIGHT, text);
-    } else {
-        lv_label_set_text(s_values[i], text);
-    }
+    lv_label_set_text(s_values[i], text);
 }
 
 static void select_row(int i)
 {
-    const int previous = s_selected;
     s_selected = i;
-    widget_row_set_selected(s_rows[previous], false);
-    widget_row_set_selected(s_rows[i], true);
-    render_value(previous);
-    render_value(i);
+    for (int row = 0; row < ITEM_COUNT; row++) {
+        if (s_rows[row] != NULL) {
+            widget_row_set_selected(s_rows[row], row == i);
+        }
+    }
 }
 
 static void on_row(lv_event_t *e)
@@ -155,8 +151,9 @@ static void show_group(setting_group_t group)
     }
 
     for (int i = 0; i < GROUP_COUNT; i++) {
-        lv_obj_set_style_bg_color(s_group_buttons[i], i == group ? theme_accent() : theme_button(), 0);
+        widget_row_set_selected(s_group_rows[i], i == group);
     }
+    lv_label_set_text(s_group_title, s_group_names[group]);
 
     lv_obj_clean(s_list);
     if (group == GROUP_BLUETOOTH) {
@@ -177,7 +174,7 @@ static void show_group(setting_group_t group)
         if (s_items[i].group != group) {
             continue;
         }
-        s_rows[i] = widget_row(s_list, s_items[i].name, &s_values[i], on_row, LV_EVENT_CLICKED,
+        s_rows[i] = widget_row(s_list, s_items[i].name, &s_values[i], on_row, LV_EVENT_PRESSED,
                                (void *)(intptr_t)i);
         widget_row_set_selected(s_rows[i], i == s_selected);
         render_value(i);
@@ -296,30 +293,23 @@ static void tick(void)
 static void create(lv_obj_t *scr)
 {
     widget_title(scr, "Settings");
-    lv_obj_t *group_row = lv_obj_create(scr);
-    lv_obj_remove_style_all(group_row);
-    lv_obj_set_size(group_row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(group_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(group_row, 5, 0);
-    lv_obj_set_event_bubble(group_row, true);
-    lv_obj_align(group_row, LV_ALIGN_CENTER, 0, -82);
+    lv_obj_t *sidebar = widget_list(scr, 0);
+    lv_obj_set_width(sidebar, 88);
+    lv_obj_set_style_pad_row(sidebar, 8, 0);
+    lv_obj_align(sidebar, LV_ALIGN_TOP_LEFT, 38, 110);
     for (int i = 0; i < GROUP_COUNT; i++) {
-        s_group_buttons[i] = lv_button_create(group_row);
-        lv_obj_set_size(s_group_buttons[i], 70, 40);
-        lv_obj_set_style_radius(s_group_buttons[i], 20, 0);
-        lv_obj_set_style_bg_color(s_group_buttons[i], theme_button(), 0);
-        lv_obj_set_style_shadow_width(s_group_buttons[i], 0, 0);
-        lv_obj_set_event_bubble(s_group_buttons[i], true);
-        lv_obj_add_event_cb(s_group_buttons[i], on_group, LV_EVENT_CLICKED, (void *)(intptr_t)i);
-        lv_obj_t *label = lv_label_create(s_group_buttons[i]);
-        lv_label_set_text(label, s_group_names[i]);
-        lv_obj_set_style_text_font(label, THEME_FONT_BODY, 0);
-        lv_obj_center(label);
+        s_group_rows[i] = widget_row(sidebar, s_group_names[i], NULL, on_group,
+                                     LV_EVENT_PRESSED, (void *)(intptr_t)i);
     }
 
     s_list = widget_list(scr, 24);
-    lv_obj_set_width(s_list, 250);
+    lv_obj_set_width(s_list, 192);
     lv_obj_set_scrollable(s_list, false);
+    lv_obj_align(s_list, LV_ALIGN_TOP_LEFT, 138, 121);
+    s_group_title = lv_label_create(scr);
+    lv_obj_set_style_text_font(s_group_title, THEME_FONT_BODY, 0);
+    lv_obj_set_style_text_color(s_group_title, theme_accent_text(), 0);
+    lv_obj_align(s_group_title, LV_ALIGN_TOP_LEFT, 150, 94);
     s_hint = widget_hint(scr, "Tap a row, turn knob to change");
     show_group(GROUP_POINTER);
 
