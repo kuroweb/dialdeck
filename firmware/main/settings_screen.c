@@ -14,8 +14,7 @@
 #include "widgets.h"
 
 typedef enum {
-    GROUP_POINTER,
-    GROUP_SCROLL,
+    GROUP_TRACKPAD,
     GROUP_DISPLAY,
     GROUP_BATTERY,
     GROUP_BLUETOOTH,
@@ -23,7 +22,7 @@ typedef enum {
     GROUP_COUNT,
 } setting_group_t;
 
-static const char *const s_group_names[GROUP_COUNT] = { "Pointer", "Scroll", "Display", "Battery", "BT", "Usage" };
+static const char *const s_group_names[GROUP_COUNT] = { "TrackPad", "Display", "Battery", "BT", "Usage" };
 
 typedef enum {
     FMT_X100,
@@ -42,11 +41,11 @@ typedef struct {
 } item_t;
 
 static const item_t s_items[] = {
-    { "Pointer speed",  GROUP_POINTER, offsetof(settings_t, pointer_gain),     25, FMT_X100 },
-    { "Acceleration",   GROUP_POINTER, offsetof(settings_t, pointer_accel),    5,  FMT_X100 },
-    { "Max speed",      GROUP_POINTER, offsetof(settings_t, pointer_gain_max), 50, FMT_X100 },
-    { "Scroll step",    GROUP_SCROLL,  offsetof(settings_t, scroll_step),      1,  FMT_INT },
-    { "Scroll dir",     GROUP_SCROLL,  offsetof(settings_t, scroll_reverse),   1,  FMT_DIRECTION },
+    { "Pointer speed",  GROUP_TRACKPAD, offsetof(settings_t, pointer_gain),     25, FMT_X100 },
+    { "Acceleration",   GROUP_TRACKPAD, offsetof(settings_t, pointer_accel),    5,  FMT_X100 },
+    { "Max speed",      GROUP_TRACKPAD, offsetof(settings_t, pointer_gain_max), 50, FMT_X100 },
+    { "Scroll step",    GROUP_TRACKPAD, offsetof(settings_t, scroll_step),      1,  FMT_INT },
+    { "Scroll dir",     GROUP_TRACKPAD, offsetof(settings_t, scroll_reverse),   1,  FMT_DIRECTION },
     { "Brightness",     GROUP_DISPLAY, offsetof(settings_t, brightness),       1,  FMT_PERCENT },
     { "Screen timeout", GROUP_DISPLAY, 0,                                      1,  FMT_TIMEOUT },
 };
@@ -74,7 +73,7 @@ static int s_selected;
 static setting_group_t s_group;
 static lv_obj_t *s_sidebar;
 
-// Left column: six groups at 30 px + 6 px gap need more than the round screen shows.
+// Left column: groups at 30 px + 6 px gap; scroll when they do not fit the round screen.
 #define SIDEBAR_ROW_HEIGHT  30
 #define SIDEBAR_ROW_GAP     6
 #define SIDEBAR_VIEW_HEIGHT 186
@@ -301,7 +300,7 @@ static void scroll_group_into_view(setting_group_t group)
 
 static bool group_uses_value_knob(void)
 {
-    return s_group == GROUP_POINTER || s_group == GROUP_SCROLL || s_group == GROUP_DISPLAY;
+    return s_group == GROUP_TRACKPAD || s_group == GROUP_DISPLAY;
 }
 
 static void on_group(lv_event_t *e)
@@ -486,7 +485,7 @@ static void create(lv_obj_t *scr)
     lv_obj_set_style_text_color(s_group_title, theme_accent_text(), 0);
     lv_obj_align(s_group_title, LV_ALIGN_TOP_LEFT, 150, 94);
     s_hint = widget_hint(scr, "Tap a row, turn knob to change");
-    show_group(GROUP_POINTER);
+    show_group(GROUP_TRACKPAD);
 
     settings_on_change(on_settings_change);
     usage_sources_on_change(on_usage_sources_change);
