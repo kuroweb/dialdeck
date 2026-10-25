@@ -199,13 +199,16 @@ static void scroll_detail_by(int detents)
 
 static void select_row(int i)
 {
+    const bool changed = s_selected != i;
     s_selected = i;
     for (int row = 0; row < ITEM_COUNT; row++) {
         if (s_rows[row] != NULL) {
             set_detail_selected(s_rows[row], row == i);
         }
     }
-    scroll_row_into_view(i);
+    if (changed) {
+        scroll_row_into_view(i);
+    }
 }
 
 static void on_row(lv_event_t *e)
@@ -308,7 +311,7 @@ static void show_group(setting_group_t group)
         if (s_items[i].group != group) {
             continue;
         }
-        s_rows[i] = widget_row(s_list, s_items[i].name, &s_values[i], on_row, LV_EVENT_PRESSED,
+        s_rows[i] = widget_row(s_list, s_items[i].name, &s_values[i], on_row, LV_EVENT_SHORT_CLICKED,
                                (void *)(intptr_t)i);
         style_detail_row(s_rows[i], true);
         lv_obj_set_scroll_dir(s_rows[i], LV_DIR_NONE);
@@ -484,17 +487,25 @@ static void knob(int detents)
 static void on_usage_sources_change(void)
 {
     lvgl_port_lock(0);
+    const lv_coord_t scroll_y = s_list != NULL ? lv_obj_get_scroll_y(s_list) : 0;
     refresh_usage_sources();
+    if (s_list != NULL) {
+        lv_obj_scroll_to_y(s_list, scroll_y, LV_ANIM_OFF);
+    }
     lvgl_port_unlock();
 }
 
 static void on_settings_change(void)
 {
     lvgl_port_lock(0);
+    const lv_coord_t scroll_y = s_list != NULL ? lv_obj_get_scroll_y(s_list) : 0;
     for (int i = 0; i < ITEM_COUNT; i++) {
         render_value(i);
     }
     refresh_hosts();
+    if (s_list != NULL) {
+        lv_obj_scroll_to_y(s_list, scroll_y, LV_ANIM_OFF);
+    }
     lvgl_port_unlock();
     display_set_brightness(settings()->brightness);
     display_set_idle_timeout(settings_display_timeout());
