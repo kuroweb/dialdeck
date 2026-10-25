@@ -1,6 +1,29 @@
 # 構成
 
-動くものは二つ。デバイス上のファームウェアと、Mac のアプリ。無線は BLE だけ。Wi-Fi と OTA は無い。
+DialDeck の実行体は二つ。デバイス上のファームウェアと、Mac のアプリ。無線は BLE だけ。Wi-Fi と OTA は無い。
+
+## 全体図
+
+```mermaid
+flowchart LR
+    subgraph device["デバイス（JC3636K718C）"]
+        firmware["ESP32-S3 / ファームウェア<br/>画面・ノブ・タッチ"]
+    end
+    subgraph mac["Mac"]
+        system["macOS<br/>キーボード・マウス入力"]
+        app["DialDeck 常駐アプリ<br/>設定・同期・操作の仲介"]
+        herdr["herdr<br/>agent の状態と操作"]
+    end
+    usage["Claude / Codex / Cursor<br/>使用量データ"]
+
+    firmware -->|"BLE HID<br/>キー・マウス・メディアキー"| system
+    app -->|"BLE GATT 書き込み<br/>設定・agent 一覧・使用量"| firmware
+    firmware -->|"BLE GATT 通知<br/>agent 操作・使用量切り替え"| app
+    app <-->|"ローカルソケット<br/>agent 一覧の取得・操作"| herdr
+    usage -->|"Web API・ローカルデータ"| app
+```
+
+使用量の取得元は provider によって異なる。USB は書き込み、ログ、充電に使い、通常の入力と設定の通信は BLE を通る。
 
 ## つながるもの
 

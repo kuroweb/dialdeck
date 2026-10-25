@@ -6,7 +6,25 @@
 - ノブでスクロールし、画面をタッチパッドにしてマウスとして使う
 - herdr と連携し、エージェントの状態表示や操作をする
 
-動くものは二つ。デバイスのファームウェアと、Mac のメニューバー常駐アプリ。ファイルの対応は [docs/architecture.md](docs/architecture.md)。
+DialDeck の実行体は二つ。デバイスのファームウェアと、Mac のメニューバー常駐アプリ。
+
+## 全体像
+
+```mermaid
+flowchart LR
+    device["デバイス（JC3636K718C）"]
+    subgraph mac["Mac"]
+        system["macOS"]
+        app["DialDeck アプリ"]
+        herdr["herdr"]
+    end
+
+    device -->|BLE HID| system
+    device <-->|BLE GATT| app
+    app <-->|ローカルソケット| herdr
+```
+
+入力はデバイスから macOS に届く。DialDeck アプリはデバイスと herdr の間で情報と操作を仲介する。通信内容とファイルの対応は [docs/architecture.md](docs/architecture.md)。
 
 ## 技術スタック
 
@@ -25,7 +43,7 @@
 | 文書 | 内容 |
 | --- | --- |
 | [docs/setup.md](docs/setup.md) | リポジトリの取得、ESP-IDF、ビルド、書き込み、Mac アプリ |
-| [docs/architecture.md](docs/architecture.md) | ファームと Mac アプリの対応、BLE で何が通るか |
+| [docs/architecture.md](docs/architecture.md) | 通信内容とファーム、Mac アプリのファイル構成 |
 | [docs/editor.md](docs/editor.md) | Cursor に何を入れ、どの警告を見るか |
 | [docs/config-protocol.md](docs/config-protocol.md) | GATT のバイト列 |
 | [docs/hardware-notes.md](docs/hardware-notes.md) | 実機で確かめたこと |
