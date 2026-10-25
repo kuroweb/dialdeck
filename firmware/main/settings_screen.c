@@ -53,17 +53,39 @@ static const int s_timeout_values[] = { 0, 15, 30, 60, 120, 300 };
 
 static lv_obj_t *s_rows[ITEM_COUNT];
 static lv_obj_t *s_values[ITEM_COUNT];
+static lv_obj_t *s_bars[ITEM_COUNT];
 static lv_obj_t *s_group_rows[GROUP_COUNT];
 static lv_obj_t *s_group_title;
 static lv_obj_t *s_list;
 static lv_obj_t *s_host_rows[HOST_SLOT_COUNT];
 static lv_obj_t *s_host_states[HOST_SLOT_COUNT];
+static lv_obj_t *s_host_dots[HOST_SLOT_COUNT];
 static lv_obj_t *s_hint;
 static lv_obj_t *s_battery_level;
 static lv_obj_t *s_battery_voltage;
 static lv_obj_t *s_battery_power;
 static int s_selected;
 static setting_group_t s_group;
+
+static void style_detail_row(lv_obj_t *row, bool clickable)
+{
+    lv_obj_set_style_radius(row, 0, 0);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 1, 0);
+    lv_obj_set_style_border_color(row, theme_button_dim(), 0);
+    lv_obj_set_style_border_side(row, LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_style_pad_hor(row, 10, 0);
+    lv_obj_set_clickable(row, clickable);
+}
+
+static void set_detail_selected(lv_obj_t *row, bool selected)
+{
+    lv_obj_set_style_bg_color(row, theme_accent(), 0);
+    lv_obj_set_style_bg_opa(row, selected ? LV_OPA_20 : LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_color(row, selected ? theme_accent_text() : theme_button_dim(), 0);
+    lv_obj_set_style_border_width(row, selected ? 3 : 1, 0);
+    lv_obj_set_style_border_side(row, selected ? LV_BORDER_SIDE_LEFT : LV_BORDER_SIDE_BOTTOM, 0);
+}
 
 static int32_t *item_value(const item_t *item)
 {
@@ -114,6 +136,9 @@ static void render_value(int i)
         break;
     }
     lv_label_set_text(s_values[i], text);
+    if (s_bars[i] != NULL) {
+        lv_bar_set_value(s_bars[i], v, LV_ANIM_OFF);
+    }
 }
 
 static void select_row(int i)
@@ -121,7 +146,7 @@ static void select_row(int i)
     s_selected = i;
     for (int row = 0; row < ITEM_COUNT; row++) {
         if (s_rows[row] != NULL) {
-            widget_row_set_selected(s_rows[row], row == i);
+            set_detail_selected(s_rows[row], row == i);
         }
     }
 }
@@ -146,6 +171,7 @@ static void show_group(setting_group_t group)
     for (int i = 0; i < ITEM_COUNT; i++) {
         s_rows[i] = NULL;
         s_values[i] = NULL;
+        s_bars[i] = NULL;
         if (first < 0 && s_items[i].group == group) {
             first = i;
         }
@@ -154,19 +180,29 @@ static void show_group(setting_group_t group)
     for (int i = 0; i < HOST_SLOT_COUNT; i++) {
         s_host_rows[i] = NULL;
         s_host_states[i] = NULL;
+        s_host_dots[i] = NULL;
     }
 
     for (int i = 0; i < GROUP_COUNT; i++) {
-        widget_row_set_selected(s_group_rows[i], i == group);
+        lv_obj_set_style_border_width(s_group_rows[i], i == group ? 3 : 0, 0);
+        lv_obj_set_style_text_color(lv_obj_get_child(s_group_rows[i], 0),
+                                    i == group ? theme_text() : theme_text_muted(), 0);
     }
     lv_label_set_text(s_group_title, s_group_names[group]);
 
     lv_obj_clean(s_list);
     if (group == GROUP_BATTERY) {
         lv_label_set_text(s_hint, "USB shows charger voltage");
-        widget_row(s_list, "Level", &s_battery_level, NULL, 0, NULL);
-        widget_row(s_list, "Voltage", &s_battery_voltage, NULL, 0, NULL);
-        widget_row(s_list, "Power", &s_battery_power, NULL, 0, NULL);
+        lv_obj_t *level = widget_row(s_list, "Level", &s_battery_level, NULL, 0, NULL);
+        lv_obj_t *voltage = widget_row(s_list, "Voltage", &s_battery_voltage, NULL, 0, NULL);
+        lv_obj_t *power = widget_row(s_list, "Power", &s_battery_power, NULL, 0, NULL);
+        style_detail_row(level, false);
+        style_detail_row(voltage, false);
+        style_detail_row(power, false);
+        lv_obj_set_height(level, 42);
+        lv_obj_set_height(voltage, 42);
+        lv_obj_set_style_text_font(s_battery_level, THEME_FONT_TITLE, 0);
+        lv_obj_set_style_text_font(s_battery_voltage, THEME_FONT_TITLE, 0);
         refresh_battery();
         return;
     }
@@ -177,6 +213,15 @@ static void show_group(setting_group_t group)
             lv_snprintf(label, sizeof(label), LV_SYMBOL_BLUETOOTH "  Host %d", i + 1);
             s_host_rows[i] = widget_row(s_list, label, &s_host_states[i], on_host_tap,
                                         LV_EVENT_SHORT_CLICKED, (void *)(intptr_t)i);
+            style_detail_row(s_host_rows[i], true);
+            s_host_dots[i] = lv_obj_create(s_host_rows[i]);
+            lv_obj_remove_style_all(s_host_dots[i]);
+            lv_obj_set_size(s_host_dots[i], 6, 6);
+            lv_obj_set_style_radius(s_host_dots[i], LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_bg_opa(s_host_dots[i], LV_OPA_COVER, 0);
+            lv_obj_set_style_bg_color(s_host_dots[i], theme_accent_text(), 0);
+            lv_obj_set_clickable(s_host_dots[i], false);
+            lv_obj_align(s_host_dots[i], LV_ALIGN_LEFT_MID, -7, 0);
             lv_obj_add_event_cb(s_host_rows[i], on_host_hold, LV_EVENT_LONG_PRESSED, (void *)(intptr_t)i);
         }
         refresh_hosts();
@@ -190,7 +235,26 @@ static void show_group(setting_group_t group)
         }
         s_rows[i] = widget_row(s_list, s_items[i].name, &s_values[i], on_row, LV_EVENT_PRESSED,
                                (void *)(intptr_t)i);
-        widget_row_set_selected(s_rows[i], i == s_selected);
+        style_detail_row(s_rows[i], true);
+        const bool numeric = s_items[i].format == FMT_X100 || s_items[i].format == FMT_INT ||
+                             s_items[i].format == FMT_PERCENT;
+        if (numeric) {
+            lv_obj_set_height(s_rows[i], 48);
+            lv_obj_align(lv_obj_get_child(s_rows[i], 0), LV_ALIGN_TOP_LEFT, 0, 5);
+            lv_obj_align(s_values[i], LV_ALIGN_TOP_RIGHT, 0, 5);
+            s_bars[i] = lv_bar_create(s_rows[i]);
+            lv_obj_set_size(s_bars[i], 166, 3);
+            lv_obj_align(s_bars[i], LV_ALIGN_BOTTOM_MID, 0, -7);
+            lv_obj_set_style_radius(s_bars[i], 0, LV_PART_MAIN);
+            lv_obj_set_style_radius(s_bars[i], 0, LV_PART_INDICATOR);
+            lv_obj_set_style_bg_color(s_bars[i], theme_button(), LV_PART_MAIN);
+            lv_obj_set_style_bg_color(s_bars[i], theme_accent_text(), LV_PART_INDICATOR);
+            lv_obj_set_clickable(s_bars[i], false);
+            int min, max;
+            settings_range(s_items[i].offset, &min, &max);
+            lv_bar_set_range(s_bars[i], min, max);
+        }
+        set_detail_selected(s_rows[i], i == s_selected);
         render_value(i);
     }
 }
@@ -217,7 +281,7 @@ static void refresh_hosts(void)
             text = "Paired";
         }
         lv_label_set_text(s_host_states[i], text);
-        widget_row_set_selected(s_host_rows[i], i == active);
+        lv_obj_set_hidden(s_host_dots[i], i != active);
     }
 }
 
@@ -321,7 +385,11 @@ static void create(lv_obj_t *scr)
         s_group_rows[i] = widget_row(sidebar, s_group_names[i], NULL, on_group,
                                      LV_EVENT_PRESSED, (void *)(intptr_t)i);
         lv_obj_set_height(s_group_rows[i], 30);
-        lv_obj_set_style_radius(s_group_rows[i], 15, 0);
+        lv_obj_set_style_radius(s_group_rows[i], 0, 0);
+        lv_obj_set_style_bg_opa(s_group_rows[i], LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_color(s_group_rows[i], theme_accent_text(), 0);
+        lv_obj_set_style_border_side(s_group_rows[i], LV_BORDER_SIDE_LEFT, 0);
+        lv_obj_set_style_pad_hor(s_group_rows[i], 12, 0);
     }
 
     s_list = widget_list(scr, 24);
