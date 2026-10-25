@@ -14,15 +14,17 @@
 #include "widgets.h"
 
 typedef enum {
-    GROUP_TRACKPAD,
-    GROUP_DISPLAY,
+    GROUP_USAGE,
     GROUP_BATTERY,
     GROUP_BLUETOOTH,
-    GROUP_USAGE,
+    GROUP_DISPLAY,
+    GROUP_TRACKPAD,
     GROUP_COUNT,
 } setting_group_t;
 
-static const char *const s_group_names[GROUP_COUNT] = { "TrackPad", "Display", "Battery", "Bluetooth", "Agents" };
+static const char *const s_group_names[GROUP_COUNT] = {
+    "Agents", "Battery", "Bluetooth", "Display", "TrackPad",
+};
 
 typedef enum {
     FMT_X100,
@@ -165,7 +167,7 @@ static void select_row(int i)
             set_detail_selected(s_rows[row], row == i);
         }
     }
-    if (s_rows[i] != NULL) {
+    if (i >= 0 && i < ITEM_COUNT && s_rows[i] != NULL) {
         lv_obj_scroll_to_view(s_rows[i], LV_ANIM_OFF);
     }
 }
@@ -188,16 +190,12 @@ static void show_group(setting_group_t group)
     s_battery_level = NULL;
     s_battery_voltage = NULL;
     s_battery_power = NULL;
-    int first = -1;
     for (int i = 0; i < ITEM_COUNT; i++) {
         s_rows[i] = NULL;
         s_values[i] = NULL;
         s_bars[i] = NULL;
-        if (first < 0 && s_items[i].group == group) {
-            first = i;
-        }
     }
-    s_selected = first;
+    s_selected = -1;
     for (int i = 0; i < HOST_SLOT_COUNT; i++) {
         s_host_rows[i] = NULL;
         s_host_states[i] = NULL;
@@ -312,6 +310,7 @@ static void on_group(lv_event_t *e)
 {
     const setting_group_t group = (setting_group_t)(intptr_t)lv_event_get_user_data(e);
     if (group == s_group) {
+        select_row(-1);
         return;
     }
     show_group(group);
@@ -392,15 +391,12 @@ static void knob(int detents)
     if (detents == 0) {
         return;
     }
-    if (!group_uses_value_knob()) {
+    if (!group_uses_value_knob() || s_selected < 0) {
         int group = (int)s_group + detents;
         while (group < 0) {
             group += GROUP_COUNT;
         }
         show_group((setting_group_t)(group % GROUP_COUNT));
-        return;
-    }
-    if (s_selected < 0) {
         return;
     }
     const item_t *item = &s_items[s_selected];
