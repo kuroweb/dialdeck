@@ -241,6 +241,13 @@ static void refresh_usage(void)
     const bool shown = usage_get(&usage) && usage.name[0] != '\0';
     char text[32];
 
+    // The Mac sends the short window first; the outer arc and its large label show weekly usage.
+    if (shown && usage.count == 2) {
+        const usage_window_t short_window = usage.windows[0];
+        usage.windows[0] = usage.windows[1];
+        usage.windows[1] = short_window;
+    }
+
     for (int i = 0; i < USAGE_WINDOWS; i++) {
         const bool used = shown && i < usage.count;
         lv_obj_set_hidden(s_arcs[i], !used);

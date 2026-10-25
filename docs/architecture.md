@@ -26,7 +26,7 @@ ESP-IDF v6.1。アプリは `firmware/main`。画面は `screen_def_t`（`screen
 | `deck_config.c`, `deck_screen.c` | ボタン 9 個。中央と、上から時計回り |
 | `settings.c`, `settings_screen.c` | タッチパッド、スクロール、明るさ、画面消灯までの時間、Bluetooth ホスト切り替えとペアリング |
 | `config_service.c` | GATT |
-| `agents.c`, `agents_screen.c` | Mac から受け取った agent の表示と操作。8 件ずつのページを縦スワイプかノブで送る |
+| `agents.c`, `agents_screen.c` | Mac から受け取った agent の表示と操作。8 件ずつのページを縦スワイプかノブで送る。使用量の週次の窓は外側に出す |
 | `usage.c` | Mac から受け取った agent のプランの使用量。Agents 画面の中央に出す |
 | `battery.c` | 電池残量 |
 | `board.h` | ピン |
