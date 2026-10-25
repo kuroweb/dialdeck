@@ -62,7 +62,7 @@ private struct DeckPreview: View {
     private func button(index: Int, slot: DeckSlot) -> some View {
         let diameter = index == 0 ? centerButton : ringButton
         return Button { selection = index } label: {
-            Text(DeckLabel.display(slot.label, compact: index != 0))
+            DeckSlotLabelPreview(wire: slot.label, compact: index != 0)
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.white)
                 .lineLimit(1)
@@ -83,6 +83,12 @@ private enum ActionKind: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+private enum LabelPickerChoice: Hashable {
+    case custom
+    case preset(DeckLabel.Preset)
+    case glyph(DeckLabel.Glyph)
+}
+
 /// Editor for one slot. Changes stay local until Apply writes them to the device.
 private struct SlotEditor: View {
     let name: String
@@ -91,22 +97,47 @@ private struct SlotEditor: View {
 
     @State private var draft = DeckSlot()
     @State private var kind = ActionKind.none
-
-    private var labelBinding: Binding<String> {
-        Binding(
-            get: { DeckLabel.display(draft.label) },
-            set: { draft.label = DeckLabel.wire(from: $0) }
-        )
-    }
+    @State private var labelChoice = LabelPickerChoice.custom
+    @State private var customText = ""
 
     var body: some View {
         Form {
             Section(name) {
-                TextField("Label", text: labelBinding)
+                Picker("Label", selection: $labelChoice) {
+                    Text("Custom text").tag(LabelPickerChoice.custom)
+                    ForEach(DeckLabel.Preset.allCases) { preset in
+                        Text(preset.title).tag(LabelPickerChoice.preset(preset))
+                    }
+                    ForEach(DeckLabel.Glyph.allCases) { glyph in
+                        Label(glyph.title, systemImage: glyph.systemImage(compact: false))
+                            .tag(LabelPickerChoice.glyph(glyph))
+                    }
+                }
+                .onChange(of: labelChoice) { _, _ in
+                    syncLabelFromChoice()
+                }
+
+                if labelChoice == .custom {
+                    TextField("Text", text: $customText)
+                        .onChange(of: customText) { _, newValue in
+                            let text = DeckLabel.sanitizedText(newValue)
+                            if text != newValue { customText = text }
+                            draft.label = text
+                        }
+                } else {
+                    LabeledContent("On device") {
+                        DeckSlotLabelPreview(wire: draft.label)
+                    }
+                }
+
                 if !labelFits {
-                    Text("Up to \(DeckSlot.maxLabelBytes) bytes. ASCII text, or ▶ ⏸ 🔊 for device symbols.")
+                    Text("Up to \(DeckSlot.maxLabelBytes) bytes. Use custom text (A–Z, digits, symbols) or a device symbol above.")
                         .font(.caption)
                         .foregroundStyle(.red)
+                } else if !labelChoiceMatchesDraft {
+                    Text("This slot uses a label the editor cannot round-trip. Pick a label type and Apply to replace it.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                 }
 
                 Picker("Action", selection: $kind) {
@@ -142,15 +173,44 @@ private struct SlotEditor: View {
         .onChange(of: stored) { _, _ in load() }
     }
 
-    /// The device font has ASCII only; the built-in labels also use its private-use symbol glyphs.
-    private var labelFits: Bool {
-        draft.label.utf8.count <= DeckSlot.maxLabelBytes
-            && draft.label.unicodeScalars.allSatisfy { $0.isASCII || (0xF000...0xF8FF).contains($0.value) }
+    private var labelFits: Bool { DeckLabel.isValidWire(draft.label) }
+
+    private var labelChoiceMatchesDraft: Bool {
+        switch labelChoice {
+        case .custom:
+            draft.label == customText
+        case .preset(let preset):
+            draft.label == preset.wire
+        case .glyph(let glyph):
+            draft.label == glyph.wire
+        }
     }
 
     private func load() {
         draft = stored
         kind = stored.key != 0 ? .shortcut : (stored.consumer != 0 ? .media : .none)
+        switch DeckLabel.decode(stored.label) {
+        case .text(let text):
+            labelChoice = .custom
+            customText = text
+        case .preset(let preset):
+            labelChoice = .preset(preset)
+            customText = ""
+        case .glyph(let glyph):
+            labelChoice = .glyph(glyph)
+            customText = ""
+        }
+    }
+
+    private func syncLabelFromChoice() {
+        switch labelChoice {
+        case .custom:
+            draft.label = DeckLabel.sanitizedText(customText)
+        case .preset(let preset):
+            draft.label = preset.wire
+        case .glyph(let glyph):
+            draft.label = glyph.wire
+        }
     }
 
     private func setKind(_ newKind: ActionKind) {
