@@ -117,3 +117,22 @@ cp -R mac/dist/DialDeck.app /Applications/
 3. DialDeck を Mac とペアリングしておく（システム設定 → Bluetooth）。アプリはペアリング済みで接続中の DialDeck を使い、自分では探さない
 
 設定ウィンドウやメニューに `Not connected` と出たままなら、ファームの GATT サービスが変わって Mac が古い構成を覚えている可能性がある。システム設定 → Bluetooth で DialDeck を削除し、ペアリングし直す。
+
+### Claude の使用量を出す
+
+Claude Code 2.1.80 以降の Pro / Max で使える。最初の API 応答後に使用量が入り、Claude Code を閉じている間は更新されない。仕様は [Claude Code の status line](https://code.claude.com/docs/en/statusline) を参照する。
+
+`jq` を用意し、`~/.claude/settings.json` の `statusLine` コマンドで実行するスクリプトへ次を追加する。既存スクリプトがあれば、入力を読んだ後へ追記する。入力 JSON 全体を変数 `input` に保持している前提（まだ読んでいなければ `input=$(cat)` で読む）。
+
+```sh
+rate_limits=$(printf '%s' "$input" | jq -c '.rate_limits // empty')
+if [ -n "$rate_limits" ]; then
+    usage_dir="$HOME/Library/Application Support/DialDeck"
+    mkdir -p "$usage_dir" &&
+        usage_tmp=$(mktemp "$usage_dir/claude-rate-limits.json.XXXXXX") &&
+        { printf '%s\n' "$rate_limits" > "$usage_tmp" &&
+            mv "$usage_tmp" "$usage_dir/claude-rate-limits.json"; }
+fi
+```
+
+`.rate_limits` オブジェクトだけを保存する。`resets_at` は Unix 秒。同じディレクトリの一時ファイルから `mv` で原子的に置き換える。Mac アプリは毎分読み、期限を過ぎた窓は不明として表示する。キーチェーンは使わない。

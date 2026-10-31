@@ -90,7 +90,7 @@ struct AgentsSettingsView: View {
         let onDevice = "Shown in the middle of the Agents screen. Tap the center on the device to switch provider."
         switch usage.provider {
         case .off: return onDevice
-        case .claude: return "\(onDevice) Claude is read every five minutes."
+        case .claude: return "\(onDevice) Claude is read every minute from a file written by Claude Code's status line. Updates only while Claude Code is running."
         case .codex: return "\(onDevice) Codex is read every minute from local session logs."
         case .cursor: return "\(onDevice) Cursor is read every five minutes."
         }
