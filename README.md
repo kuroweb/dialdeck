@@ -4,7 +4,7 @@
 
 - Stream Deck のように、画面のボタンでショートカットを送る
 - ノブでスクロールし、画面をタッチパッドにしてマウスとして使う
-- herdr と連携し、エージェントの状態表示や操作をする
+- herdr または Orca と連携し、エージェントの状態表示や操作をする
 
 DialDeck の実行体は二つ。デバイスのファームウェアと、Mac のメニューバー常駐アプリ。
 
@@ -16,15 +16,17 @@ flowchart LR
     subgraph mac["Mac"]
         system["macOS"]
         app["DialDeck アプリ"]
-        herdr["herdr"]
+        agents["herdr / Orca"]
     end
 
     device -->|BLE HID| system
     device <-->|BLE GATT| app
-    app <-->|ローカルソケット| herdr
+    app <-->|ソケット / Orca CLI| agents
 ```
 
-入力はデバイスから macOS に届く。DialDeck アプリはデバイスと herdr の間で情報と操作を仲介する。通信内容とファイルの対応は [docs/architecture.md](docs/architecture.md)。
+入力はデバイスから macOS に届く。DialDeck アプリは設定で選んだ agent ホストとデバイスの間で情報と操作を仲介する。通信内容とファイルの対応は [docs/architecture.md](docs/architecture.md)。
+
+agent ホストは Mac アプリの Agents 設定、またはデバイスの Settings → Usage → Agent host で選ぶ。選択は接続中の両方で同期する。
 
 ## 技術スタック
 
@@ -33,7 +35,7 @@ flowchart LR
 | ファームウェア | ESP-IDF v6.1、NimBLE、LVGL 9、`esp_lcd_st77916` | `firmware/`。アプリは `firmware/main` |
 | Mac アプリ | Swift 6.0 の Package、macOS 14、CoreBluetooth、SwiftUI | `mac/`。Xcode のプロジェクトは無い |
 | デバイスとの接続 | BLE HID（キーボード、マウス、メディアキー）と、独自 GATT | [docs/config-protocol.md](docs/config-protocol.md) |
-| herdr | Mac アプリだけがソケットを開く。デバイスは GATT 経由で操作を頼む | `mac/Sources/DialDeckKit/HerdrBridge.swift` |
+| herdr / Orca | 選択した連携先の一覧を Mac アプリが取得し、デバイスは GATT 経由で操作を頼む | `mac/Sources/DialDeckKit/HerdrBridge.swift`、`OrcaBridge.swift` |
 | エディタ | Cursor。C は Apple clangd、Swift は SourceKit-LSP | [docs/editor.md](docs/editor.md) |
 
 無線は BLE だけ。Wi-Fi と OTA は使わない。USB は書き込み、ログ、充電。

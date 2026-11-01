@@ -2,6 +2,7 @@
 #include <stddef.h>
 
 #include "battery.h"
+#include "agent_host.h"
 #include "ble_hid.h"
 #include "display.h"
 #include "esp_lvgl_port.h"
@@ -69,6 +70,7 @@ static lv_obj_t *s_battery_voltage;
 static lv_obj_t *s_battery_power;
 static lv_obj_t *s_usage_rows[USAGE_SOURCE_COUNT];
 static lv_obj_t *s_usage_switches[USAGE_SOURCE_COUNT];
+static lv_obj_t *s_agent_host_value;
 static const char *const s_usage_names[USAGE_SOURCE_COUNT] = { "Claude", "Codex", "Cursor" };
 static int s_selected;
 static setting_group_t s_group;
@@ -82,6 +84,8 @@ static lv_obj_t *s_sidebar;
 
 static void refresh_usage_sources(void);
 static void on_usage_switch(lv_event_t *e);
+static void refresh_agent_host(void);
+static void on_agent_host_tap(lv_event_t *e);
 static void scroll_group_into_view(setting_group_t group);
 static bool group_uses_value_knob(void);
 
@@ -205,6 +209,7 @@ static void show_group(setting_group_t group)
         s_usage_rows[i] = NULL;
         s_usage_switches[i] = NULL;
     }
+    s_agent_host_value = NULL;
 
     for (int i = 0; i < GROUP_COUNT; i++) {
         lv_obj_set_style_border_width(s_group_rows[i], i == group ? 3 : 0, 0);
@@ -253,6 +258,10 @@ static void show_group(setting_group_t group)
         return;
     }
     if (group == GROUP_USAGE) {
+        lv_obj_t *host = widget_row(s_list, "Agent host", &s_agent_host_value,
+                                    on_agent_host_tap, LV_EVENT_SHORT_CLICKED, NULL);
+        style_detail_row(host, true);
+        refresh_agent_host();
         for (int i = 0; i < USAGE_SOURCE_COUNT; i++) {
             s_usage_rows[i] = widget_toggle_row(s_list, s_usage_names[i], &s_usage_switches[i],
                                                 on_usage_switch, (void *)(intptr_t)i);
@@ -365,6 +374,19 @@ static void refresh_usage_sources(void)
     }
 }
 
+static void refresh_agent_host(void)
+{
+    if (s_agent_host_value != NULL) {
+        lv_label_set_text(s_agent_host_value, agent_host_name());
+    }
+}
+
+static void on_agent_host_tap(lv_event_t *e)
+{
+    const agent_host_t next = agent_host_get() == AGENT_HOST_HERDR ? AGENT_HOST_ORCA : AGENT_HOST_HERDR;
+    agent_host_set((uint8_t)next);
+}
+
 static void on_usage_switch(lv_event_t *e)
 {
     const int index = (int)(intptr_t)lv_event_get_user_data(e);
@@ -442,6 +464,14 @@ static void on_usage_sources_change(void)
     lvgl_port_unlock();
 }
 
+static void on_agent_host_change(void)
+{
+    lvgl_port_lock(0);
+    refresh_agent_host();
+    lvgl_port_unlock();
+    config_service_notify_agent_host();
+}
+
 static void on_settings_change(void)
 {
     lvgl_port_lock(0);
@@ -512,6 +542,7 @@ static void create(lv_obj_t *scr)
 
     settings_on_change(on_settings_change);
     usage_sources_on_change(on_usage_sources_change);
+    agent_host_on_change(on_agent_host_change);
 }
 
 const screen_def_t settings_screen = {

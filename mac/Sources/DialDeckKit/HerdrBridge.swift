@@ -17,6 +17,8 @@ public final class HerdrBridge: ObservableObject {
 
     private let link: DeviceLink
     private var timer: Timer?
+    private var active = false
+    private var generation = 0
     private var lastSent: [Data]?
     private var linkReady = false
     private var polling = false
@@ -32,10 +34,12 @@ public final class HerdrBridge: ObservableObject {
 
     public init(link: DeviceLink) {
         self.link = link
-        link.onAgentAction = { [weak self] action, id in self?.perform(action, on: id) }
     }
 
     public func start() {
+        active = true
+        generation += 1
+        state = .starting
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.poll() }
@@ -43,7 +47,16 @@ public final class HerdrBridge: ObservableObject {
         poll()
     }
 
+    public func stop() {
+        active = false
+        generation += 1
+        timer?.invalidate()
+        timer = nil
+        lastSent = nil
+    }
+
     private func poll() {
+        guard active else { return }
         // Resend after the device reconnects: it forgets the list when it restarts.
         let ready = link.state == .ready
         if ready && !linkReady {
@@ -53,11 +66,13 @@ public final class HerdrBridge: ObservableObject {
         guard !polling else { return }
         polling = true
 
+        let generation = self.generation
         let cache = detailCache
         Task.detached {
             let result = Result { try Self.fetchAgents(detailCache: cache) }
             await MainActor.run {
                 self.polling = false
+                guard self.active, self.generation == generation else { return }
                 switch result {
                 case .success(let (agents, cache)):
                     self.detailCache = cache
@@ -88,7 +103,7 @@ public final class HerdrBridge: ObservableObject {
 
         let agents: [AgentSummary] = raw.compactMap { entry in
             guard let pane = entry["pane_id"] as? String else { return nil }
-            let status = AgentSummary.Status(herdr: entry["agent_status"] as? String)
+            let status = AgentSummary.Status(agentState: entry["agent_status"] as? String)
             let title = (entry["terminal_title_stripped"] as? String)
                 .flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 } ?? pane
             var detail = ""
@@ -119,10 +134,10 @@ public final class HerdrBridge: ObservableObject {
         return lines.suffix(4).joined(separator: "\n")
     }
 
-    private func perform(_ action: AgentAction, on pane: String) {
+    func perform(_ action: AgentAction, on pane: String) {
         Task.detached {
             do {
-                if let key = action.herdrKey {
+                if let key = Self.key(for: action) {
                     _ = try HerdrSocket.request("agent.send_keys", ["target": pane, "keys": [key]])
                 } else {
                     try Self.focus(pane)
@@ -131,6 +146,16 @@ public final class HerdrBridge: ObservableObject {
             } catch {
                 NSLog("DialDeck: herdr action \(action) on \(pane) failed: \(error.localizedDescription)")
             }
+        }
+    }
+
+    private nonisolated static func key(for action: AgentAction) -> String? {
+        switch action {
+        case .focus: nil
+        case .enter: "enter"
+        case .esc: "esc"
+        case .up: "up"
+        case .down: "down"
         }
     }
 

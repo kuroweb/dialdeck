@@ -1,6 +1,6 @@
 # 設定用 GATT サービス
 
-Mac アプリがボタン画面の割り当てと、タッチパッドなどの設定を読み書きし、herdr の agent をやり取りするための BLE GATT サービス。ファーム側は `firmware/main/config_service.c`、Mac 側は `mac/Sources/DialDeckKit/DeviceLink.swift`。
+Mac アプリがボタン画面の割り当てと、タッチパッドなどの設定を読み書きし、選択中の agent ホストの agent をやり取りするための BLE GATT サービス。ファーム側は `firmware/main/config_service.c`、Mac 側は `mac/Sources/DialDeckKit/DeviceLink.swift`。
 
 macOS は DialDeck をキーボードとマウスとして接続したままにする。Mac アプリはスキャンせず、接続済みの DialDeck を取得して同じ接続でこのサービスを使う。
 
@@ -16,10 +16,11 @@ macOS は DialDeck をキーボードとマウスとして接続したままに�
 | action | `98d34631-2eb8-4022-ba87-4f253e72a24b` |
 | usage | `98d34632-2eb8-4022-ba87-4f253e72a24b` |
 | usage_sources | `98d34633-2eb8-4022-ba87-4f253e72a24b` |
+| agent_host | `98d34634-2eb8-4022-ba87-4f253e72a24b` |
 
 ## info（読み取り）
 
-3 バイト: `[プロトコル版, スロット数, ラベル長]`。今はプロトコル版 5、スロット数 9、ラベル長 16。Mac アプリはプロトコル版 4 または 5 だけ受け付ける。
+3 バイト: `[プロトコル版, スロット数, ラベル長]`。今はプロトコル版 6、スロット数 9、ラベル長 16。Mac アプリはプロトコル版 4〜6 を受け付ける。
 
 ## deck（読み取り・書き込み、暗号化必須）
 
@@ -59,14 +60,14 @@ macOS は DialDeck をキーボードとマウスとして接続したままに�
 
 ## agents（書き込み、暗号化必須）
 
-Mac アプリが herdr の agent の一覧を丸ごと書き込む。一覧が変わったときと、デバイスがつなぎ直したときに送る。一覧は 8 件ずつのページに分け、ページ 0 から順に 1 ページ 1 回で書き込む。1 回は最大 512 バイトで、1 パケットに収まらないときは long write になる。
+Mac アプリが選択中の agent ホストの一覧を丸ごと書き込む。一覧が変わったときと、デバイスがつなぎ直したときに送る。一覧は 8 件ずつのページに分け、ページ 0 から順に 1 ページ 1 回で書き込む。1 回は最大 512 バイトで、1 パケットに収まらないときは long write になる。
 
 `[ページ番号][ページ数][件数]` に続けて、agent ごとに次を並べる。件数は最大 8 で、最後のページ以外は 8。全体は最大 32 件（4 ページ）。デバイスは最後のページを受け取ったときに一覧を置き換える。順番が飛んだページは拒否する。
 
 | 長さ | 内容 |
 | --- | --- |
 | 1 | 状態（0 blocked、1 done、2 working、3 idle、4 unknown）。この順に並べて送る |
-| 1 + n | herdr の pane ID（agent コマンドの対象）。先頭 1 バイトが長さ、最大 23 バイト |
+| 1 + n | agent ホスト内で操作対象を引く短い ID。先頭 1 バイトが長さ、最大 23 バイト |
 | 1 + n | タイトル（`terminal_title_stripped`）。UTF-8、最大 95 バイト |
 | 1 + n | blocked の agent が聞いていること（`agent read --source detection` の最後の数行）。UTF-8、最大 159 バイト。blocked でなければ空 |
 
@@ -98,14 +99,24 @@ Mac アプリが GATT を版 3 の構成のまま覚えていて usage が見つ
 
 Mac アプリは接続時に読み、Agents の Usage sources と同期する。Mac でトグルしたときは書き込む。通知を受けたときも Mac 側を更新する。中央タップ（action 6）の順序は、このマスクと同じ。
 
+## agent_host（読み取り・書き込み・通知、暗号化必須、プロトコル版 6）
+
+Agents 画面に表示する agent ホスト。1 バイトで、`0` は herdr、`1` は Orca。デフォルトは herdr。デバイスは NVS に保存し、設定画面 → Usage の Agent host 行をタップすると切り替わる。
+
+- 読み取り: 今のホスト
+- 書き込み: 1 バイトで置き換える。`0` と `1` 以外は `Value Not Allowed` で拒否する
+- 通知: デバイスでホストが変わったとき、同じ 1 バイトを送る
+
+Mac アプリは接続時に読み、選択中のホストを合わせる。Mac の設定で選んだときもデバイスへ書き込み、通知を受けたときは Mac 側を更新する。Mac が古い GATT 構成を覚えていて agent_host が見つからないときは、システム設定 → Bluetooth で DialDeck を削除し、ペアリングし直す。
+
 ## action（通知）
 
 デバイスで agent を操作したとき、デバイスから Mac アプリに通知する。Mac アプリは接続時に購読する。
 
 `[操作][ID の長さ][pane ID]`。操作は 1 Focus、2 Enter、3 Esc、4 上、5 下、6 次の使用量。
 
-- Focus: herdr で workspace、tab、pane の順にフォーカスし、起動中のターミナルアプリを前面に出す
-- Enter / Esc / 上 / 下: `agent send-keys` でそのキーを送る
+- Focus: 選択中の agent ホストで対象の terminal をフォーカスし、起動中のターミナルアプリを前面に出す
+- Enter / Esc / 上 / 下: 選択中の agent ホストへ対応するキー入力を送る
 - 次の使用量: Agents 画面の中央をタップしたときに送る。ID は空。Mac アプリは、usage_sources で有効な agent だけを Off → Claude → Codex → Cursor の順で 1 つ進め、usage を書き込み直す
 
 ## 版の履歴
@@ -117,3 +128,4 @@ Mac アプリは接続時に読み、Agents の Usage sources と同期する。
 | 3 | agents と action を追加 |
 | 4 | agents をページ分けにして最大 32 件にし、usage を追加 |
 | 5 | usage_sources を追加。デバイス設定の Usage と Mac の Usage sources を同期する |
+| 6 | agent_host を追加。デバイスと Mac の選択中ホストを同期する |

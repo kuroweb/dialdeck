@@ -4,11 +4,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// herdr agents as last sent by the Mac app (see docs/config-protocol.md).
+// Agent summaries as last sent by the Mac app (see docs/config-protocol.md).
 
 #define AGENT_MAX         32
 #define AGENT_PAGE        8     // agents per write, and per page on the agents screen
-#define AGENT_ID_LEN      24    // herdr pane id, bytes including NUL
+#define AGENT_ID_LEN      24    // agent-host ID, bytes including NUL
 #define AGENT_TITLE_LEN   96    // UTF-8 bytes including NUL
 #define AGENT_DETAIL_LEN  160   // what a blocked agent is asking, UTF-8 bytes including NUL
 

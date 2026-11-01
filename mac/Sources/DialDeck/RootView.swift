@@ -21,6 +21,8 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
 struct RootView: View {
     @ObservedObject var link: DeviceLink
     @ObservedObject var herdr: HerdrBridge
+    @ObservedObject var orca: OrcaBridge
+    @ObservedObject var agentSource: AgentSourceController
     @ObservedObject var usage: UsageMonitor
     @State private var selection: SettingsPage = .agents
     @FocusState private var focusedPage: SettingsPage?
@@ -37,7 +39,8 @@ struct RootView: View {
                     Group {
                         switch selection {
                         case .agents:
-                            AgentsSettingsView(link: link, herdr: herdr, usage: usage)
+                            AgentsSettingsView(link: link, herdr: herdr, orca: orca,
+                                               agentSource: agentSource, usage: usage)
                         case .touchpad:
                             deviceContent { TouchpadSettingsView(link: link) }
                         case .deck:

@@ -9,16 +9,6 @@ public enum AgentAction: UInt8, Sendable {
     case up
     case down
 
-    /// herdr's name for the key this action sends, or nil for focus.
-    var herdrKey: String? {
-        switch self {
-        case .focus: nil
-        case .enter: "enter"
-        case .esc: "esc"
-        case .up: "up"
-        case .down: "down"
-        }
-    }
 }
 
 /// One agent as the device shows it. Mirrors agent_t in firmware/main/agents.h.
@@ -27,9 +17,9 @@ public struct AgentSummary: Equatable, Sendable {
     public enum Status: UInt8, Sendable {
         case blocked = 0, done, working, idle, unknown
 
-        init(herdr value: String?) {
+        init(agentState value: String?) {
             switch value {
-            case "blocked": self = .blocked
+            case "blocked", "needs_you", "needs_input": self = .blocked
             case "done": self = .done
             case "working": self = .working
             case "idle": self = .idle
@@ -39,7 +29,7 @@ public struct AgentSummary: Equatable, Sendable {
     }
 
     public var status: Status
-    public var id: String       // herdr pane id, the target of agent commands
+    public var id: String       // short agent-host ID used to route device actions
     public var title: String
     public var detail: String   // what a blocked agent is asking
 

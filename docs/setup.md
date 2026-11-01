@@ -118,6 +118,10 @@ cp -R mac/dist/DialDeck.app /Applications/
 
 設定ウィンドウやメニューに `Not connected` と出たままなら、ファームの GATT サービスが変わって Mac が古い構成を覚えている可能性がある。システム設定 → Bluetooth で DialDeck を削除し、ペアリングし直す。
 
+Agents の連携先に Orca を選ぶ場合は、Orca を起動する。CLI が見つからない場合は、Settings → General → Orca CLI で登録する。DialDeck は同じ Mac の Orca セッションを表示する。
+
+デバイス側では Settings → Usage → Agent host をタップすると herdr と Orca を切り替えられる。Mac とデバイスの選択は接続中に同期する。Agent host が見つからないという警告が Mac に出た場合は、DialDeck のファームウェアを更新し、Bluetooth でペアリングし直す。
+
 ### Claude の使用量を出す
 
 Claude Code 2.1.80 以降の Pro / Max で使える。最初の API 応答後に使用量が入り、Claude Code を閉じている間は更新されない。仕様は [Claude Code の status line](https://code.claude.com/docs/en/statusline) を参照する。

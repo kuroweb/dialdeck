@@ -12,14 +12,14 @@ flowchart LR
     subgraph mac["Mac"]
         system["macOS<br/>キーボード・マウス入力"]
         app["DialDeck 常駐アプリ<br/>設定・同期・操作の仲介"]
-        herdr["herdr<br/>agent の状態と操作"]
+        agents["herdr / Orca<br/>agent の状態と操作"]
     end
     usage["Claude / Codex / Cursor<br/>使用量データ"]
 
     firmware -->|"BLE HID<br/>キー・マウス・メディアキー"| system
     app -->|"BLE GATT 書き込み<br/>設定・agent 一覧・使用量"| firmware
     firmware -->|"BLE GATT 通知<br/>agent 操作・使用量切り替え"| app
-    app <-->|"ローカルソケット<br/>agent 一覧の取得・操作"| herdr
+    app <-->|"ソケット / Orca CLI<br/>agent 一覧の取得・操作"| agents
     usage -->|"Web API・ローカルデータ"| app
 ```
 
@@ -28,8 +28,8 @@ flowchart LR
 ## つながるもの
 
 1. BLE HID。デバイスがキーボード、マウス、メディアキーになる。接続を持っているのは macOS で、アプリは HID を喋らない。ファームは `firmware/main/ble_hid.c`。
-2. BLE の独自 GATT。アプリが、ボタンの割り当て、タッチパッドと明るさ、herdr の agent 一覧を読み書きする。バイト列は [config-protocol.md](config-protocol.md)。ファームは `firmware/main/config_service.c`、Mac は `mac/Sources/DialDeckKit/DeviceLink.swift`。
-3. herdr のソケット。開くのは Mac アプリだけ（`HerdrSocket.swift`、`HerdrBridge.swift`）。デバイスは GATT の action で「この agent をフォーカスして」などと頼み、アプリが herdr に渡す。
+2. BLE の独自 GATT。アプリが、ボタンの割り当て、タッチパッドと明るさ、選択中の agent ホストの一覧を読み書きする。バイト列は [config-protocol.md](config-protocol.md)。ファームは `firmware/main/config_service.c`、Mac は `mac/Sources/DialDeckKit/DeviceLink.swift`。
+3. agent ホストとの連携。Mac アプリまたはデバイスの設定で herdr / Orca を選び、GATT で選択を同期する。Mac アプリが herdr のローカルソケットまたは Orca CLI を使う。デバイスは GATT の action で「この agent をフォーカスして」などと頼み、選択中の連携先に渡す。
 
 アプリは Bluetooth をスキャンしない。ペアリング済みで、macOS が HID として接続している DialDeck を使う。
 
@@ -63,10 +63,10 @@ Swift Package。macOS 14、Swift ツール 6.0、言語モード 5。Xcode の�
 
 | ターゲット | 役割 |
 | --- | --- |
-| `DialDeckKit` | GATT、ファームと同じバイト列、herdr のソケット、プランの使用量の取得（`UsageMonitor.swift`） |
+| `DialDeckKit` | GATT、ファームと同じバイト列、herdr / Orca との連携、プランの使用量の取得（`UsageMonitor.swift`） |
 | `DialDeck` | SwiftUI のメニューバー常駐アプリと設定ウィンドウ。サイドバーは Agents、Touchpad、Deck |
 
-入口は `mac/Sources/DialDeck/DialDeckApp.swift`。メニューは `MenuContent.swift` で、接続、herdr、使用量の状態と、設定ウィンドウ、ログイン時の起動、終了を置く。ウィンドウを閉じても herdr と使用量は送り続ける。ボタンの編集は `DeckEditorView.swift`、タッチパッドと明るさは `TouchpadSettingsView.swift`。使用量を出す agent（Claude、Codex、Cursor）は `AgentsSettingsView.swift`（Agents ページ）で選ぶ。デバイスの Agents 画面の中央をタップしても次へ切り替わる。
+入口は `mac/Sources/DialDeck/DialDeckApp.swift`。メニューは `MenuContent.swift` で、接続、選択中の agent ホスト、使用量の状態と、設定ウィンドウ、ログイン時の起動、終了を置く。ウィンドウを閉じても選択中の連携先と使用量は送り続ける。ボタンの編集は `DeckEditorView.swift`、タッチパッドと明るさは `TouchpadSettingsView.swift`。agent ホストの選択と使用量を出す agent（Claude、Codex、Cursor）は `AgentsSettingsView.swift`（Agents ページ）で行う。デバイスの Agents 画面の中央をタップしても次へ切り替わる。
 
 ビルドは `mac/scripts/build-app.sh`。CoreBluetooth には Bluetooth の使用目的を書いた Info.plist が要るので、SwiftPM の実行ファイルを `.app` に包んで ad hoc 署名する。
 
