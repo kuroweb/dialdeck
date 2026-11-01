@@ -21,6 +21,13 @@ struct AgentsSettingsView: View {
                         Text(source.name).tag(source)
                     }
                 }
+                .disabled(link.state != .ready || (link.agentHostSupported && !link.agentHostLoaded))
+
+                if link.state != .ready {
+                    Text("Connect DialDeck to change the shared agent host.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
                 if link.state == .ready, !link.agentHostSupported {
                     Label("The device source setting will not sync. Update its firmware, then remove DialDeck in System Settings → Bluetooth and pair again.",

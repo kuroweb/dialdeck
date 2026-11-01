@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 
 /// Keeps the device's agent list in step with local Orca sessions and carries out supported actions.
@@ -236,8 +237,29 @@ public final class OrcaBridge: ObservableObject {
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
         try process.run()
+
+        let timedOut = DispatchSemaphore(value: 0)
+        let timeout = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
+        timeout.schedule(deadline: .now() + 10)
+        timeout.setEventHandler {
+            guard process.isRunning else { return }
+            timedOut.signal()
+            process.terminate()
+            let processID = process.processIdentifier
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1) {
+                if process.isRunning {
+                    _ = kill(processID, SIGKILL)
+                }
+            }
+        }
+        timeout.resume()
+        defer { timeout.cancel() }
+
         let data = output.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
+        if timedOut.wait(timeout: .now()) == .success {
+            throw CLIError.timedOut(arguments.first ?? "command")
+        }
         guard process.terminationStatus == 0,
               let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               envelope["ok"] as? Bool == true,
@@ -249,10 +271,12 @@ public final class OrcaBridge: ObservableObject {
 
     private enum CLIError: LocalizedError {
         case commandFailed(String)
+        case timedOut(String)
 
         var errorDescription: String? {
             switch self {
             case .commandFailed(let command): "Orca \(command) did not return a successful JSON result."
+            case .timedOut(let command): "Orca \(command) timed out after 10 seconds."
             }
         }
     }

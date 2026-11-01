@@ -36,6 +36,8 @@ public final class DeviceLink: NSObject, ObservableObject {
     @Published public private(set) var usageSourcesSupported = false
     /// False when the agent_host characteristic is missing (re-pair in System Settings → Bluetooth).
     @Published public private(set) var agentHostSupported = false
+    /// True after the first agent-host value has been read or notified on this connection.
+    @Published public private(set) var agentHostLoaded = false
 
     /// Called when the device asks the selected agent host to perform an action.
     public var onAgentAction: ((AgentAction, String) -> Void)?
@@ -154,6 +156,7 @@ public final class DeviceLink: NSObject, ObservableObject {
         agentHostCharacteristic = nil
         usageSourcesSupported = false
         agentHostSupported = false
+        agentHostLoaded = false
         protocolVersion = 4
         pendingWrites.removeAll()
         pendingSettings = nil
@@ -266,7 +269,10 @@ extension DeviceLink: CBPeripheralDelegate {
             case Self.usageSourcesUUID:
                 onUsageSourcesMask?(value.first ?? 0)
             case Self.agentHostUUID:
-                if let host = value.first, host <= 1 { onAgentHost?(host) }
+                if let host = value.first, host <= 1 {
+                    agentHostLoaded = true
+                    onAgentHost?(host)
+                }
             case Self.actionUUID:
                 // [action, id length, id]
                 if value.first == Self.nextUsageAction {
