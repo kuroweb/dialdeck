@@ -23,8 +23,9 @@ public final class DeviceLink: NSObject, ObservableObject {
     static let actionUUID = CBUUID(string: "98D34631-2EB8-4022-BA87-4F253E72A24B")
     static let usageUUID = CBUUID(string: "98D34632-2EB8-4022-BA87-4F253E72A24B")
     static let usageSourcesUUID = CBUUID(string: "98D34633-2EB8-4022-BA87-4F253E72A24B")
+    static let agentHostUUID = CBUUID(string: "98D34634-2EB8-4022-BA87-4F253E72A24B")
     static let hidServiceUUID = CBUUID(string: "1812")
-    static let supportedProtocols: Set<UInt8> = [4, 5]
+    static let supportedProtocols: Set<UInt8> = [4, 5, 6]
 
     @Published public private(set) var state: State = .searching
     @Published public private(set) var slots: [DeckSlot] = []
@@ -33,13 +34,19 @@ public final class DeviceLink: NSObject, ObservableObject {
     @Published public private(set) var usageSupported = false
     /// False when the usage_sources characteristic is missing (re-pair in System Settings → Bluetooth).
     @Published public private(set) var usageSourcesSupported = false
+    /// False when the agent_host characteristic is missing (re-pair in System Settings → Bluetooth).
+    @Published public private(set) var agentHostSupported = false
+    /// True after the first agent-host value has been read or notified on this connection.
+    @Published public private(set) var agentHostLoaded = false
 
-    /// Called when the device asks to act on a herdr agent (see AgentAction).
+    /// Called when the device asks the selected agent host to perform an action.
     public var onAgentAction: ((AgentAction, String) -> Void)?
     /// Called when the device asks to show the next usage provider (its center was tapped).
     public var onNextUsage: (() -> Void)?
     /// Called when the device changes which usage sources are enabled (protocol 5).
     public var onUsageSourcesMask: ((UInt8) -> Void)?
+    /// Called when the device changes the selected agent host (protocol 6).
+    public var onAgentHost: ((UInt8) -> Void)?
     static let nextUsageAction: UInt8 = 6
 
     private var central: CBCentralManager!
@@ -52,6 +59,9 @@ public final class DeviceLink: NSObject, ObservableObject {
     }
     private var usageSourcesCharacteristic: CBCharacteristic? {
         didSet { usageSourcesSupported = usageSourcesCharacteristic != nil }
+    }
+    private var agentHostCharacteristic: CBCharacteristic? {
+        didSet { agentHostSupported = agentHostCharacteristic != nil }
     }
     private var protocolVersion: UInt8 = 4
     private var pendingSettings: DeviceSettings?
@@ -77,7 +87,7 @@ public final class DeviceLink: NSObject, ObservableObject {
         peripheral.writeValue(newSettings.wire, for: settingsCharacteristic, type: .withResponse)
     }
 
-    /// Replace the herdr agent list shown on the device, one write per page. Writes with response
+    /// Replace the selected agent-host list shown on the device, one write per page. Writes with response
     /// arrive in order, and a page over one packet is sent as a long write, which CoreBluetooth
     /// does on its own.
     public func writeAgents(_ pages: [Data]) {
@@ -97,6 +107,12 @@ public final class DeviceLink: NSObject, ObservableObject {
     public func writeUsageSources(_ mask: UInt8) {
         guard let peripheral, let usageSourcesCharacteristic else { return }
         peripheral.writeValue(Data([mask & 0x07]), for: usageSourcesCharacteristic, type: .withResponse)
+    }
+
+    /// Select the agent host used by both the device and Mac app (protocol 6).
+    public func writeAgentHost(_ value: UInt8) {
+        guard let peripheral, let agentHostCharacteristic, value <= 1 else { return }
+        peripheral.writeValue(Data([value]), for: agentHostCharacteristic, type: .withResponse)
     }
 
     /// Write one assignment. The device saves it and redraws the button.
@@ -137,7 +153,10 @@ public final class DeviceLink: NSObject, ObservableObject {
         agentsCharacteristic = nil
         usageCharacteristic = nil
         usageSourcesCharacteristic = nil
+        agentHostCharacteristic = nil
         usageSourcesSupported = false
+        agentHostSupported = false
+        agentHostLoaded = false
         protocolVersion = 4
         pendingWrites.removeAll()
         pendingSettings = nil
@@ -184,7 +203,7 @@ extension DeviceLink: CBPeripheralDelegate {
                 reset(.failed("The device has no config service. Update its firmware."))
                 return
             }
-            // Discover every characteristic so a bonded Mac sees new ones (e.g. usage_sources) without re-pairing.
+            // Discover every characteristic so a bonded Mac sees new ones without re-pairing.
             peripheral.discoverCharacteristics(nil, for: service)
         }
     }
@@ -207,9 +226,13 @@ extension DeviceLink: CBPeripheralDelegate {
             // device is paired again.
             usageCharacteristic = characteristics.first(where: { $0.uuid == Self.usageUUID })
             usageSourcesCharacteristic = characteristics.first(where: { $0.uuid == Self.usageSourcesUUID })
+            agentHostCharacteristic = characteristics.first(where: { $0.uuid == Self.agentHostUUID })
             peripheral.setNotifyValue(true, for: action)
             if let usageSources = usageSourcesCharacteristic {
                 peripheral.setNotifyValue(true, for: usageSources)
+            }
+            if let agentHost = agentHostCharacteristic {
+                peripheral.setNotifyValue(true, for: agentHost)
             }
             peripheral.readValue(for: info)
         }
@@ -233,6 +256,9 @@ extension DeviceLink: CBPeripheralDelegate {
                 if let usageSources = usageSourcesCharacteristic {
                     peripheral.readValue(for: usageSources)
                 }
+                if let agentHost = agentHostCharacteristic {
+                    peripheral.readValue(for: agentHost)
+                }
             case Self.deckUUID:
                 slots = stride(from: 0, to: value.count - DeckSlot.wireSize + 1, by: DeckSlot.wireSize).compactMap {
                     DeckSlot(wire: value.subdata(in: $0..<$0 + DeckSlot.wireSize))
@@ -242,6 +268,11 @@ extension DeviceLink: CBPeripheralDelegate {
                 settings = DeviceSettings(wire: value)
             case Self.usageSourcesUUID:
                 onUsageSourcesMask?(value.first ?? 0)
+            case Self.agentHostUUID:
+                if let host = value.first, host <= 1 {
+                    agentHostLoaded = true
+                    onAgentHost?(host)
+                }
             case Self.actionUUID:
                 // [action, id length, id]
                 if value.first == Self.nextUsageAction {
@@ -260,7 +291,7 @@ extension DeviceLink: CBPeripheralDelegate {
     public nonisolated func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         MainActor.assumeIsolated {
             if characteristic.uuid == Self.agentsUUID || characteristic.uuid == Self.usageUUID
-                || characteristic.uuid == Self.usageSourcesUUID {
+                || characteristic.uuid == Self.usageSourcesUUID || characteristic.uuid == Self.agentHostUUID {
                 // A refused value is replaced by the next one; it must not break the editor.
                 if let error { NSLog("DialDeck: \(characteristic.uuid) write failed: \(error.localizedDescription)") }
                 return

@@ -1,4 +1,4 @@
-// herdr agents. The agents screen is a ring of eight circles, one per agent, colored by status
+// The agents screen is a ring of eight circles, one per agent, colored by status
 // and showing the start of the title; tapping one opens it. More than eight agents go on further
 // pages, turned by a vertical swipe or the knob. The center shows how much of the agent plan the
 // Mac app reports as used; tapping it switches to the next provider. The agent screen shows what a blocked agent is asking and sends Focus, Enter, Esc, and

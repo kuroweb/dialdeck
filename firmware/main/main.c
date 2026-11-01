@@ -1,4 +1,5 @@
 #include "agents.h"
+#include "agent_host.h"
 #include "battery.h"
 #include "ble_hid.h"
 #include "deck_config.h"
@@ -88,6 +89,7 @@ void app_main(void)
     agents_init();
     usage_init();
     usage_sources_load();
+    agent_host_load();
 
     display_init();
     display_set_brightness(settings()->brightness);

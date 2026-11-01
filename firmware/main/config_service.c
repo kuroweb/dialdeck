@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "agent_host.h"
 #include "agents.h"
 #include "ble_hid.h"
 #include "deck_config.h"
@@ -13,7 +14,7 @@
 
 static const char *TAG = "config_service";
 
-#define PROTOCOL_VERSION  5
+#define PROTOCOL_VERSION  6
 
 // 98d3462c-2eb8-4022-ba87-4f253e72a24b and characteristics sharing its base.
 // NimBLE takes 128-bit UUIDs least significant byte first.
@@ -28,9 +29,11 @@ static const ble_uuid128_t s_agents_uuid = CONFIG_UUID(0x30);
 static const ble_uuid128_t s_action_uuid = CONFIG_UUID(0x31);
 static const ble_uuid128_t s_usage_uuid = CONFIG_UUID(0x32);
 static const ble_uuid128_t s_usage_sources_uuid = CONFIG_UUID(0x33);
+static const ble_uuid128_t s_agent_host_uuid = CONFIG_UUID(0x34);
 
 static uint16_t s_action_handle;
 static uint16_t s_usage_sources_handle;
+static uint16_t s_agent_host_handle;
 
 // Info: [protocol version, slot count, label length].
 static int access_info(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
@@ -86,7 +89,7 @@ static int access_settings(uint16_t conn, uint16_t attr, struct ble_gatt_access_
     return 0;
 }
 
-// Agents: the Mac app writes the whole herdr agent list, one page per write, whenever it changes.
+// Agents: the Mac app writes the selected agent-host list, one page per write, whenever it changes.
 static int access_agents(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
     // A page can exceed one ATT packet; the Mac sends it as a long write, which NimBLE
@@ -131,6 +134,22 @@ static int access_usage_sources(uint16_t conn, uint16_t attr, struct ble_gatt_ac
     }
     usage_sources_set_mask(mask);
     return 0;
+}
+
+// Agent host: one byte, 0 herdr or 1 Orca. Mac and device keep it in sync.
+static int access_agent_host(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
+        const uint8_t value = (uint8_t)agent_host_get();
+        return os_mbuf_append(ctxt->om, &value, 1) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+
+    uint8_t value = 0;
+    uint16_t len = 0;
+    if (OS_MBUF_PKTLEN(ctxt->om) != 1 || ble_hs_mbuf_to_flat(ctxt->om, &value, 1, &len) != 0) {
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+    return agent_host_set(value) ? 0 : BLE_ATT_ERR_VALUE_NOT_ALLOWED;
 }
 
 static const struct ble_gatt_svc_def s_services[] = {
@@ -181,6 +200,14 @@ static const struct ble_gatt_svc_def s_services[] = {
                          BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC |
                          BLE_GATT_CHR_F_NOTIFY,
             },
+            {
+                .uuid = &s_agent_host_uuid.u,
+                .access_cb = access_agent_host,
+                .val_handle = &s_agent_host_handle,
+                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC |
+                         BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC |
+                         BLE_GATT_CHR_F_NOTIFY,
+            },
             { 0 },
         },
     },
@@ -217,4 +244,15 @@ bool config_service_notify_usage_sources(void)
     const uint8_t mask = usage_sources_mask();
     struct os_mbuf *om = ble_hs_mbuf_from_flat(&mask, 1);
     return om != NULL && ble_gatts_notify_custom(conn, s_usage_sources_handle, om) == 0;
+}
+
+bool config_service_notify_agent_host(void)
+{
+    const uint16_t conn = ble_hid_conn();
+    if (conn == BLE_HS_CONN_HANDLE_NONE) {
+        return false;
+    }
+    const uint8_t value = (uint8_t)agent_host_get();
+    struct os_mbuf *om = ble_hs_mbuf_from_flat(&value, 1);
+    return om != NULL && ble_gatts_notify_custom(conn, s_agent_host_handle, om) == 0;
 }

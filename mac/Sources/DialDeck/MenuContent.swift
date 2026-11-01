@@ -6,13 +6,15 @@ import SwiftUI
 struct MenuContent: View {
     @ObservedObject var link: DeviceLink
     @ObservedObject var herdr: HerdrBridge
+    @ObservedObject var orca: OrcaBridge
+    @ObservedObject var agentSource: AgentSourceController
     @ObservedObject var usage: UsageMonitor
     @Environment(\.openSettings) private var openSettings
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
         Text(deviceText)
-        Text(herdrText)
+        Text(agentSourceText)
         Text(usageText)
         Divider()
         Button("Settings…") {
@@ -38,11 +40,20 @@ struct MenuContent: View {
         }
     }
 
-    private var herdrText: String {
-        switch herdr.state {
-        case .starting: "herdr: starting"
-        case .running(let agents): "herdr: \(agents) agents"
-        case .unavailable(let message): "herdr: \(message)"
+    private var agentSourceText: String {
+        switch agentSource.source {
+        case .herdr:
+            switch herdr.state {
+            case .starting: "herdr: starting"
+            case .running(let agents): "herdr: \(agents) agents"
+            case .unavailable(let message): "herdr: \(message)"
+            }
+        case .orca:
+            switch orca.state {
+            case .starting: "Orca: starting"
+            case .running(let agents): "Orca: \(agents) agents"
+            case .unavailable(let message): "Orca: \(message)"
+            }
         }
     }
 

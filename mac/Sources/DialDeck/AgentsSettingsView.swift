@@ -1,25 +1,62 @@
 import DialDeckKit
 import SwiftUI
 
-/// Settings of the device's Agents screen: whether herdr's agents reach it, and which agent's
+/// Settings of the device's Agents screen: which host supplies its agents, and which agent's
 /// plan usage its middle shows.
 struct AgentsSettingsView: View {
     @ObservedObject var link: DeviceLink
     @ObservedObject var herdr: HerdrBridge
+    @ObservedObject var orca: OrcaBridge
+    @ObservedObject var agentSource: AgentSourceController
     @ObservedObject var usage: UsageMonitor
 
     var body: some View {
         Form {
-            Section("herdr") {
+            Section("Agents") {
+                Picker("Source", selection: Binding(
+                    get: { agentSource.source },
+                    set: { agentSource.select($0) }
+                )) {
+                    ForEach(AgentSourceController.Source.allCases) { source in
+                        Text(source.name).tag(source)
+                    }
+                }
+                .disabled(link.state != .ready || (link.agentHostSupported && !link.agentHostLoaded))
+
+                if link.state != .ready {
+                    Text("Connect DialDeck to change the shared agent host.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if link.state == .ready, !link.agentHostSupported {
+                    Label("The device source setting will not sync. Update its firmware, then remove DialDeck in System Settings → Bluetooth and pair again.",
+                          systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                }
+
                 LabeledContent("Agents") {
-                    switch herdr.state {
-                    case .starting:
-                        Text("Looking for herdr…")
-                    case .running(let agents):
-                        Text("\(agents) sent to the device")
-                    case .unavailable(let message):
-                        Label(message, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.orange)
+                    switch agentSource.source {
+                    case .herdr:
+                        switch herdr.state {
+                        case .starting:
+                            Text("Looking for herdr…")
+                        case .running(let agents):
+                            Text("\(agents) sent to the device")
+                        case .unavailable(let message):
+                            Label(message, systemImage: "exclamationmark.triangle")
+                                .foregroundStyle(.orange)
+                        }
+                    case .orca:
+                        switch orca.state {
+                        case .starting:
+                            Text("Looking for Orca…")
+                        case .running(let agents):
+                            Text("\(agents) sent to the device")
+                        case .unavailable(let message):
+                            Label(message, systemImage: "exclamationmark.triangle")
+                                .foregroundStyle(.orange)
+                        }
                     }
                 }
             }
