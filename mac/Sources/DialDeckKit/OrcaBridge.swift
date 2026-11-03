@@ -143,13 +143,14 @@ public final class OrcaBridge: ObservableObject {
                   let handle = terminal["handle"] as? String else { continue }
             handlesByPaneKey["\(tabID):\(leafID)"] = handle
         }
-        var rawAgents: [(paneKey: String, entry: [String: Any], handle: String)] = []
+        // Chat sessions (paneKey "structured-agent-session-…") have no terminal, so they get no
+        // handle: they are listed, but the CLI offers no way to focus them or send keys.
+        var rawAgents: [(paneKey: String, entry: [String: Any], handle: String?)] = []
         for worktree in worktrees where worktree["hostId"] as? String == "local" {
             guard let entries = worktree["agents"] as? [[String: Any]] else { continue }
             for entry in entries {
-                guard let paneKey = entry["paneKey"] as? String,
-                      let handle = handlesByPaneKey[paneKey] else { continue }
-                rawAgents.append((paneKey, entry, handle))
+                guard let paneKey = entry["paneKey"] as? String else { continue }
+                rawAgents.append((paneKey, entry, handlesByPaneKey[paneKey]))
             }
         }
 
@@ -158,20 +159,22 @@ public final class OrcaBridge: ObservableObject {
         var agents: [AgentSummary] = []
         var detailCache: [String: (stateStartedAt: Int?, text: String)] = [:]
         for item in rawAgents {
-            let id = oldIDs[item.paneKey] ?? opaqueID(avoiding: Set(handlesByID.keys))
+            let id = oldIDs[item.paneKey] ?? opaqueID(avoiding: Set(idsByPaneKey.values))
             idsByPaneKey[item.paneKey] = id
             handlesByID[id] = item.handle
             let title = Self.agentTitle(item.entry)
             let status = AgentSummary.Status(agentState: item.entry["state"] as? String)
             var detail = ""
-            if status == .blocked {
+            if status == .blocked, let handle = item.handle {
                 let stateStartedAt = item.entry["stateStartedAt"] as? Int
                 if let cached = oldDetails[item.paneKey], cached.stateStartedAt == stateStartedAt {
                     detail = cached.text
                 } else {
-                    detail = (try? readScreen(item.handle)) ?? ""
+                    detail = (try? readScreen(handle)) ?? ""
                 }
                 detailCache[item.paneKey] = (stateStartedAt, detail)
+            } else if status == .blocked {
+                detail = Self.chatDetail(item.entry)
             }
             agents.append(AgentSummary(status: status, id: id, title: title, detail: detail))
         }
@@ -184,13 +187,21 @@ public final class OrcaBridge: ObservableObject {
     }
 
     private nonisolated static func agentTitle(_ entry: [String: Any]) -> String {
-        for key in ["taskTitle", "displayName", "prompt", "agentType"] {
+        for key in ["taskTitle", "displayName", "conversationName", "prompt", "agentType"] {
             guard let value = entry[key] as? String else { continue }
             let firstLine = value.split(whereSeparator: \.isNewline).first ?? ""
             let title = firstLine.split(whereSeparator: \.isWhitespace).joined(separator: " ")
             if !title.isEmpty { return title }
         }
         return "Orca agent"
+    }
+
+    /// A chat session has no screen to read; show the pending tool, else its last reply.
+    private nonisolated static func chatDetail(_ entry: [String: Any]) -> String {
+        let tool = [entry["toolName"], entry["toolInput"]].compactMap { $0 as? String }
+            .filter { !$0.isEmpty }
+            .joined(separator: ": ")
+        return tool.isEmpty ? entry["lastAssistantMessage"] as? String ?? "" : tool
     }
 
     /// Use the rendered screen only for a blocked agent. Draft composer text is UI-only and is

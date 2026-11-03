@@ -118,25 +118,14 @@ cp -R mac/dist/DialDeck.app /Applications/
 
 設定ウィンドウやメニューに `Not connected` と出たままなら、ファームの GATT サービスが変わって Mac が古い構成を覚えている可能性がある。システム設定 → Bluetooth で DialDeck を削除し、ペアリングし直す。
 
-Agents の連携先に Orca を選ぶ場合は、Orca を起動する。CLI が見つからない場合は、Settings → General → Orca CLI で登録する。DialDeck は同じ Mac の Orca セッションを表示する。
+Agents の連携先に Orca を選ぶ場合は、Orca を起動する。CLI が見つからない場合は、Settings → General → Orca CLI で登録する。DialDeck は同じ Mac の Orca セッションを表示する。Orca のチャットで動く agent はターミナルを持たないので、一覧には出るが、デバイスからのフォーカスとキー送信は効かない。
 
 デバイス側では Settings → Usage → Agent host をタップすると herdr と Orca を切り替えられる。Mac とデバイスの選択は接続中に同期する。Agent host が見つからないという警告が Mac に出た場合は、DialDeck のファームウェアを更新し、Bluetooth でペアリングし直す。
 
+### Cursor の使用量を出す
+
+Mac アプリは cursor.com の使用量を 5 分ごとに読む。トークンは Cursor IDE の `state.vscdb` から読み、JWT でなければ `cursor-agent` がログインキーチェーンに置くもの（`cursor-access-token`）を `/usr/bin/security` で読む。今の Cursor IDE はトークンを暗号化して保存するので、`cursor-agent login` でログインしておく。
+
 ### Claude の使用量を出す
 
-Claude Code 2.1.80 以降の Pro / Max で使える。最初の API 応答後に使用量が入り、Claude Code を閉じている間は更新されない。仕様は [Claude Code の status line](https://code.claude.com/docs/en/statusline) を参照する。
-
-`jq` を用意し、`~/.claude/settings.json` の `statusLine` コマンドで実行するスクリプトへ次を追加する。既存スクリプトがあれば、入力を読んだ後へ追記する。入力 JSON 全体を変数 `input` に保持している前提（まだ読んでいなければ `input=$(cat)` で読む）。
-
-```sh
-rate_limits=$(printf '%s' "$input" | jq -c '.rate_limits // empty')
-if [ -n "$rate_limits" ]; then
-    usage_dir="$HOME/Library/Application Support/DialDeck"
-    mkdir -p "$usage_dir" &&
-        usage_tmp=$(mktemp "$usage_dir/claude-rate-limits.json.XXXXXX") &&
-        { printf '%s\n' "$rate_limits" > "$usage_tmp" &&
-            mv "$usage_tmp" "$usage_dir/claude-rate-limits.json"; }
-fi
-```
-
-`.rate_limits` オブジェクトだけを保存する。`resets_at` は Unix 秒。同じディレクトリの一時ファイルから `mv` で原子的に置き換える。Mac アプリは毎分読み、期限を過ぎた窓は不明として表示する。キーチェーンは使わない。
+Claude Code に Pro / Max でログインしておく。Mac アプリは Claude Code がログインキーチェーンに置く OAuth トークン（`Claude Code-credentials`）を `/usr/bin/security` で読み、`/usage` と同じ API を 5 分ごとに読む。キーチェーンのダイアログが出たら許可する。Orca のチャットのように status line を実行しないセッションでも更新される。トークンの期限が切れると、Claude Code を一度使うまで読めない。
