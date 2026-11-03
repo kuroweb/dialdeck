@@ -55,10 +55,8 @@ public struct UsageWindow: Equatable, Sendable {
 /// a minute; web APIs every five minutes, and less often after they answer 429, with the last
 /// values kept on the device in the meantime.
 ///
-/// Claude: the rate_limits file written by Claude Code's status line while it is fresh; otherwise
-/// the usage endpoint Claude Code's /usage reads, with the OAuth token Claude Code keeps in the
-/// login keychain, read through /usr/bin/security. Sessions without a status line (such as Orca's
-/// chat) update only the latter.
+/// Claude: the usage endpoint Claude Code's /usage reads, with the OAuth token Claude Code keeps
+/// in the login keychain.
 /// Codex: the newest readable `rate_limits` on a session log's token_count
 /// events (rows with empty windows after a limit are skipped for an older row in the same file).
 /// Cursor: the usage summary of cursor.com, with the token the Cursor IDE keeps in its state
@@ -207,7 +205,7 @@ public final class UsageMonitor: ObservableObject {
 
     /// How often a provider is read when it answers normally.
     private static func interval(_ provider: UsageProvider) -> TimeInterval {
-        provider == .cursor ? 300 : 60
+        provider == .codex ? 60 : 300
     }
 
     private func poll() {
@@ -224,7 +222,7 @@ public final class UsageMonitor: ObservableObject {
         }
         fetching.insert(provider)
         Task.detached {
-            let result: Result<Reading, Error>
+            let result: Result<[UsageWindow], Error>
             do {
                 result = .success(try await Self.fetch(provider))
             } catch {
@@ -234,15 +232,14 @@ public final class UsageMonitor: ObservableObject {
         }
     }
 
-    private func finish(_ provider: UsageProvider, _ reading: Result<Reading, Error>) {
+    private func finish(_ provider: UsageProvider, _ result: Result<[UsageWindow], Error>) {
         fetching.remove(provider)
         let normal = Self.interval(provider)
-        let result = reading.map(\.windows)
-        switch reading {
-        case .success(let reading):
-            cache[provider] = reading.windows
+        switch result {
+        case .success(let windows):
+            cache[provider] = windows
             backoff[provider] = nil
-            nextFetch[provider] = Date().addingTimeInterval(reading.interval ?? normal)
+            nextFetch[provider] = Date().addingTimeInterval(normal)
         case .failure(let error):
             // Back off, doubling up to half an hour, or as long as the server asks.
             let wait = min(max(backoff[provider].map { $0 * 2 } ?? normal, normal), 1800)
@@ -305,38 +302,20 @@ public final class UsageMonitor: ObservableObject {
         }
     }
 
-    /// Windows read, and when to read again if not after the provider's usual interval.
-    struct Reading {
-        var windows: [UsageWindow]
-        var interval: TimeInterval?
-    }
-
-    private nonisolated static func fetch(_ provider: UsageProvider) async throws -> Reading {
+    private nonisolated static func fetch(_ provider: UsageProvider) async throws -> [UsageWindow] {
         switch provider {
-        case .off: Reading(windows: [])
+        case .off: []
         case .claude: try await fetchClaude()
-        case .codex: Reading(windows: try fetchCodex())
-        case .cursor: Reading(windows: try await fetchCursor())
+        case .codex: try fetchCodex()
+        case .cursor: try await fetchCursor()
         }
     }
 
     // MARK: Claude
 
-    private nonisolated static let claudeStatusLineFile = FileManager.default.homeDirectoryForCurrentUser
-        .appending(path: "Library/Application Support/DialDeck/claude-rate-limits.json")
-
-    /// A status line file newer than this is used without asking the web API.
-    private nonisolated static let claudeStatusLineFreshness: TimeInterval = 300
-
-    private nonisolated static func fetchClaude() async throws -> Reading {
-        let modified = (try? claudeStatusLineFile.resourceValues(forKeys: [.contentModificationDateKey]))?
-            .contentModificationDate
-        if let modified, Date().timeIntervalSince(modified) < claudeStatusLineFreshness {
-            return Reading(windows: try claudeStatusLineWindows())
-        }
+    private nonisolated static func fetchClaude() async throws -> [UsageWindow] {
         guard let token = claudeAccessToken() else {
-            // No keychain access: the status line file is the only source left.
-            return Reading(windows: try claudeStatusLineWindows())
+            throw FetchError("Claude Code is not signed in, or its keychain item could not be read.")
         }
         var request = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -347,14 +326,12 @@ public final class UsageMonitor: ObservableObject {
         } catch let error as FetchError where error.statusCode == 401 {
             throw FetchError("Claude Code's sign-in has expired (401). Use Claude Code once to refresh it.")
         }
-        let windows = [("five_hour", "5h"), ("seven_day", "7d")].map { key, label in
+        return [("five_hour", "5h"), ("seven_day", "7d")].map { key, label in
             let window = body[key] as? [String: Any]
             return UsageWindow(label: label,
                                percent: (window?["utilization"] as? Double).map { Int($0.rounded()) },
                                resetsAt: (window?["resets_at"] as? String).flatMap(parseDate))
         }
-        // Web API: every five minutes, like Cursor.
-        return Reading(windows: windows, interval: 300)
     }
 
     private nonisolated static func claudeAccessToken() -> String? {
@@ -381,24 +358,6 @@ public final class UsageMonitor: ObservableObject {
         let data = output.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         return process.terminationStatus == 0 ? data : nil
-    }
-
-    private nonisolated static func claudeStatusLineWindows() throws -> [UsageWindow] {
-        guard let data = try? Data(contentsOf: claudeStatusLineFile),
-              let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw FetchError("No Claude usage yet. Sign in to Claude Code, or set up the status line (docs/setup.md).")
-        }
-        return [("five_hour", "5h"), ("seven_day", "7d")].map { key, label in
-            let window = body[key] as? [String: Any]
-            let resetsAt = (window?["resets_at"] as? Double).map { Date(timeIntervalSince1970: $0) }
-            // No status line update after the window rolled; do not guess 0% from stale data.
-            if let resetsAt, resetsAt < Date() {
-                return UsageWindow(label: label, percent: nil, resetsAt: nil)
-            }
-            return UsageWindow(label: label,
-                               percent: (window?["used_percentage"] as? Double).map { Int($0.rounded()) },
-                               resetsAt: resetsAt)
-        }
     }
 
     // MARK: Codex

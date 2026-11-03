@@ -128,25 +128,4 @@ Mac アプリは cursor.com の使用量を 5 分ごとに読む。トークン�
 
 ### Claude の使用量を出す
 
-Claude Code 2.1.80 以降の Pro / Max で使える。Mac アプリは次の順に読む。
-
-1. 下の status line が 5 分以内に書いたファイル。毎分読む
-2. それより古ければ、Claude Code がログインキーチェーンに置く OAuth トークンを `/usr/bin/security` で読み、`/usage` と同じ API を 5 分ごとに読む。キーチェーンのダイアログが出たら許可する
-3. トークンが読めなければ、古い status line のファイル
-
-Claude Code を閉じている間や、Orca のチャットのように status line を実行しない場合は、2 で更新される。status line は最初の API 応答後に使用量が入り、Claude Code を閉じている間は更新されない。仕様は [Claude Code の status line](https://code.claude.com/docs/en/statusline) を参照する。
-
-`jq` を用意し、`~/.claude/settings.json` の `statusLine` コマンドで実行するスクリプトへ次を追加する。既存スクリプトがあれば、入力を読んだ後へ追記する。入力 JSON 全体を変数 `input` に保持している前提（まだ読んでいなければ `input=$(cat)` で読む）。
-
-```sh
-rate_limits=$(printf '%s' "$input" | jq -c '.rate_limits // empty')
-if [ -n "$rate_limits" ]; then
-    usage_dir="$HOME/Library/Application Support/DialDeck"
-    mkdir -p "$usage_dir" &&
-        usage_tmp=$(mktemp "$usage_dir/claude-rate-limits.json.XXXXXX") &&
-        { printf '%s\n' "$rate_limits" > "$usage_tmp" &&
-            mv "$usage_tmp" "$usage_dir/claude-rate-limits.json"; }
-fi
-```
-
-`.rate_limits` オブジェクトだけを保存する。`resets_at` は Unix 秒。同じディレクトリの一時ファイルから `mv` で原子的に置き換える。期限を過ぎた窓は不明として表示する。
+Claude Code に Pro / Max でログインしておく。Mac アプリは Claude Code がログインキーチェーンに置く OAuth トークン（`Claude Code-credentials`）を `/usr/bin/security` で読み、`/usage` と同じ API を 5 分ごとに読む。キーチェーンのダイアログが出たら許可する。Orca のチャットのように status line を実行しないセッションでも更新される。トークンの期限が切れると、Claude Code を一度使うまで読めない。
