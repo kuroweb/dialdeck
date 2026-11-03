@@ -55,10 +55,14 @@ public struct UsageWindow: Equatable, Sendable {
 /// a minute; web APIs every five minutes, and less often after they answer 429, with the last
 /// values kept on the device in the meantime.
 ///
-/// Claude: the rate_limits file written by Claude Code's status line.
+/// Claude: the rate_limits file written by Claude Code's status line while it is fresh; otherwise
+/// the usage endpoint Claude Code's /usage reads, with the OAuth token Claude Code keeps in the
+/// login keychain, read through /usr/bin/security. Sessions without a status line (such as Orca's
+/// chat) update only the latter.
 /// Codex: the newest readable `rate_limits` on a session log's token_count
 /// events (rows with empty windows after a limit are skipped for an older row in the same file).
-/// Cursor: the usage summary of cursor.com, with the token Cursor keeps in its state database.
+/// Cursor: the usage summary of cursor.com, with the token the Cursor IDE keeps in its state
+/// database, or else the one cursor-agent keeps in the login keychain.
 /// When reading fails before any value was read, the device shows the windows as unknown.
 @MainActor
 public final class UsageMonitor: ObservableObject {
@@ -220,7 +224,7 @@ public final class UsageMonitor: ObservableObject {
         }
         fetching.insert(provider)
         Task.detached {
-            let result: Result<[UsageWindow], Error>
+            let result: Result<Reading, Error>
             do {
                 result = .success(try await Self.fetch(provider))
             } catch {
@@ -230,14 +234,15 @@ public final class UsageMonitor: ObservableObject {
         }
     }
 
-    private func finish(_ provider: UsageProvider, _ result: Result<[UsageWindow], Error>) {
+    private func finish(_ provider: UsageProvider, _ reading: Result<Reading, Error>) {
         fetching.remove(provider)
         let normal = Self.interval(provider)
-        switch result {
-        case .success(let windows):
-            cache[provider] = windows
+        let result = reading.map(\.windows)
+        switch reading {
+        case .success(let reading):
+            cache[provider] = reading.windows
             backoff[provider] = nil
-            nextFetch[provider] = Date().addingTimeInterval(normal)
+            nextFetch[provider] = Date().addingTimeInterval(reading.interval ?? normal)
         case .failure(let error):
             // Back off, doubling up to half an hour, or as long as the server asks.
             let wait = min(max(backoff[provider].map { $0 * 2 } ?? normal, normal), 1800)
@@ -292,29 +297,96 @@ public final class UsageMonitor: ObservableObject {
     struct FetchError: LocalizedError {
         let errorDescription: String?
         var retryAfter: TimeInterval?   // seconds the server asked to wait
-        init(_ message: String, retryAfter: TimeInterval? = nil) {
+        var statusCode: Int?
+        init(_ message: String, retryAfter: TimeInterval? = nil, statusCode: Int? = nil) {
             errorDescription = message
             self.retryAfter = retryAfter
+            self.statusCode = statusCode
         }
     }
 
-    private nonisolated static func fetch(_ provider: UsageProvider) async throws -> [UsageWindow] {
+    /// Windows read, and when to read again if not after the provider's usual interval.
+    struct Reading {
+        var windows: [UsageWindow]
+        var interval: TimeInterval?
+    }
+
+    private nonisolated static func fetch(_ provider: UsageProvider) async throws -> Reading {
         switch provider {
-        case .off: []
-        case .claude: try fetchClaude()
-        case .codex: try fetchCodex()
-        case .cursor: try await fetchCursor()
+        case .off: Reading(windows: [])
+        case .claude: try await fetchClaude()
+        case .codex: Reading(windows: try fetchCodex())
+        case .cursor: Reading(windows: try await fetchCursor())
         }
     }
 
     // MARK: Claude
 
-    private nonisolated static func fetchClaude() throws -> [UsageWindow] {
-        let file = FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Library/Application Support/DialDeck/claude-rate-limits.json")
-        guard let data = try? Data(contentsOf: file),
+    private nonisolated static let claudeStatusLineFile = FileManager.default.homeDirectoryForCurrentUser
+        .appending(path: "Library/Application Support/DialDeck/claude-rate-limits.json")
+
+    /// A status line file newer than this is used without asking the web API.
+    private nonisolated static let claudeStatusLineFreshness: TimeInterval = 300
+
+    private nonisolated static func fetchClaude() async throws -> Reading {
+        let modified = (try? claudeStatusLineFile.resourceValues(forKeys: [.contentModificationDateKey]))?
+            .contentModificationDate
+        if let modified, Date().timeIntervalSince(modified) < claudeStatusLineFreshness {
+            return Reading(windows: try claudeStatusLineWindows())
+        }
+        guard let token = claudeAccessToken() else {
+            // No keychain access: the status line file is the only source left.
+            return Reading(windows: try claudeStatusLineWindows())
+        }
+        var request = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+        let body: [String: Any]
+        do {
+            body = try await fetchJSON(request)
+        } catch let error as FetchError where error.statusCode == 401 {
+            throw FetchError("Claude Code's sign-in has expired (401). Use Claude Code once to refresh it.")
+        }
+        let windows = [("five_hour", "5h"), ("seven_day", "7d")].map { key, label in
+            let window = body[key] as? [String: Any]
+            return UsageWindow(label: label,
+                               percent: (window?["utilization"] as? Double).map { Int($0.rounded()) },
+                               resetsAt: (window?["resets_at"] as? String).flatMap(parseDate))
+        }
+        // Web API: every five minutes, like Cursor.
+        return Reading(windows: windows, interval: 300)
+    }
+
+    private nonisolated static func claudeAccessToken() -> String? {
+        guard let data = keychainPassword(service: "Claude Code-credentials"),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let oauth = json["claudeAiOauth"] as? [String: Any] else { return nil }
+        return oauth["accessToken"] as? String
+    }
+
+    /// Run /usr/bin/security rather than the Security framework: the keychain items let that tool
+    /// read them, so an ad hoc re-signed DialDeck is not asked for the login password again.
+    private nonisolated static func keychainPassword(service: String, account: String? = nil) -> Data? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = ["find-generic-password", "-s", service] + (account.map { ["-a", $0] } ?? []) + ["-w"]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return nil }
+        // A keychain prompt left unanswered must not stop usage reads for good.
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 30) {
+            if process.isRunning { process.terminate() }
+        }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return process.terminationStatus == 0 ? data : nil
+    }
+
+    private nonisolated static func claudeStatusLineWindows() throws -> [UsageWindow] {
+        guard let data = try? Data(contentsOf: claudeStatusLineFile),
               let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw FetchError("No Claude Code rate limits yet. Set up the status line (docs/setup.md).")
+            throw FetchError("No Claude usage yet. Sign in to Claude Code, or set up the status line (docs/setup.md).")
         }
         return [("five_hour", "5h"), ("seven_day", "7d")].map { key, label in
             let window = body[key] as? [String: Any]
@@ -406,9 +478,18 @@ public final class UsageMonitor: ObservableObject {
     private nonisolated static func fetchCursor() async throws -> [UsageWindow] {
         let database = FileManager.default.homeDirectoryForCurrentUser
             .appending(path: "Library/Application Support/Cursor/User/globalStorage/state.vscdb")
-        guard let token = sqliteValue(database, key: "cursorAuth/accessToken"),
-              let userID = jwtSubject(token)?.split(separator: "|").last else {
-            throw FetchError("Cursor is not signed in")
+        // Newer Cursor IDEs store an encrypted "cursor-safe-storage:" value instead of the JWT;
+        // then use the token cursor-agent keeps in the login keychain.
+        func signIn(_ token: String?) -> (token: String, userID: Substring)? {
+            guard let token, let userID = jwtSubject(token)?.split(separator: "|").last else { return nil }
+            return (token, userID)
+        }
+        let cliToken = {
+            keychainPassword(service: "cursor-access-token", account: "cursor-user")
+                .map { String(decoding: $0, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) }
+        }
+        guard let (token, userID) = signIn(sqliteValue(database, key: "cursorAuth/accessToken")) ?? signIn(cliToken()) else {
+            throw FetchError("Cursor is not signed in. Sign in with the Cursor IDE or `cursor-agent login`.")
         }
         var request = URLRequest(url: URL(string: "https://cursor.com/api/usage-summary")!)
         request.setValue("WorkosCursorSessionToken=\(userID)%3A%3A\(token)", forHTTPHeaderField: "Cookie")
@@ -455,7 +536,8 @@ public final class UsageMonitor: ObservableObject {
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
             throw FetchError("\(request.url?.host() ?? "Server") returned \(http.statusCode)",
-                             retryAfter: (http.value(forHTTPHeaderField: "Retry-After")).flatMap(TimeInterval.init))
+                             retryAfter: (http.value(forHTTPHeaderField: "Retry-After")).flatMap(TimeInterval.init),
+                             statusCode: http.statusCode)
         }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw FetchError("Unexpected response")
